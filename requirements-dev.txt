@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8.3
+httpx>=0.27
+ruff==0.16.9  # 기본 규칙 세트가 버전마다 바뀌므로 고정 (규칙은 pyproject.toml)

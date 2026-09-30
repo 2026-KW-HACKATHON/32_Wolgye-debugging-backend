@@ -1,0 +1,33 @@
+[project]
+name = "chagok-chagok-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+# ruff 는 기본 규칙 세트가 버전마다 바뀐다 → 규칙을 명시하고 requirements-dev.txt 에서 버전을 고정한다.
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["alembic/versions"]  # autogenerate 결과물은 손대지 않는다
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes (미사용 import 등)
+    "I",       # import 정렬
+    "UP",      # pyupgrade
+    "B",       # flake8-bugbear
+    "SIM",     # flake8-simplify
+    "RUF",     # ruff 전용
+]
+ignore = [
+    "E501",    # 줄 길이는 포매터에 맡긴다
+    "RUF001",  # 한글 주석·문자열의 전각 문자(·, ─ 등) 허용
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
