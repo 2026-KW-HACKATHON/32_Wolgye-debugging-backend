@@ -124,6 +124,27 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 
 차고지, 이동 요청, 토큰 충전·선물, 인증 API는 아직 없습니다. 구현할 때는 `docs/db-design-issues.md` 5장의 체크리스트를 참고하세요.
 
+### Swagger 명세서 (Mock 데이터)
+서버나 DB 없이 API 명세를 볼 수 있습니다. 현재 구현된 엔드포인트와 예시 요청·응답, 에러 메시지를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
+
+- 명세 파일: [`docs/openapi-mock.yaml`](docs/openapi-mock.yaml) (OpenAPI 3.1)
+- 보기 페이지: [`docs/swagger-mock.html`](docs/swagger-mock.html) (Swagger UI를 CDN에서 불러오므로 인터넷 연결 필요)
+
+**방법 1: 로컬에서 열기** (Node.js 필요)
+```bash
+cd docs
+npx http-server -p 8080
+```
+브라우저에서 http://localhost:8080/swagger-mock.html 을 엽니다. YAML을 fetch하는 구조라 파일을 더블클릭(`file://`)하면 열리지 않으니 꼭 HTTP로 여세요. 종료는 터미널에서 `Ctrl+C`.
+
+**방법 2: 설치 없이 보기**
+[editor.swagger.io](https://editor.swagger.io)에서 `docs/openapi-mock.yaml` 내용을 붙여 넣습니다.
+
+주의할 점
+- Swagger UI의 **Try it out**은 Mock이 아니라 `http://localhost:8000/api/v1`(실제 서버)로 요청을 보냅니다. 서버를 띄우지 않았다면 실패하는 게 정상입니다.
+- 엔드포인트나 스키마를 바꾸면 `docs/openapi-mock.yaml`도 같이 고쳐 주세요. FastAPI가 자동 생성하는 명세는 서버 실행 후 http://localhost:8000/docs 에서 볼 수 있습니다.
+- enum은 API에서 **소문자 값**(`pending`, `accepted`)으로 주고받습니다.
+
 ## 개발 규칙
 - 엔드포인트에서는 DB 세션을 `db: DbSession`(`app/api/deps.py`)으로 받습니다. 기본값에 `Depends()`를 쓰는 방식은 lint(B008)에 걸립니다.
 - 라우트는 서비스(`app/services/`)를 호출만 합니다. 쿼리·규칙·`commit`은 서비스에 두고, 실패는 `HTTPException` 대신 `NotFoundError`/`ConflictError`/`ForbiddenError`로 알립니다.

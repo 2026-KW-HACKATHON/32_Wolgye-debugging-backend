@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>차곡차곡 API (Mock 명세)</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    // openapi-mock.yaml 을 fetch 하므로 file:// 이 아니라 HTTP 로 열어야 합니다.
+    //   cd docs && npx http-server -p 8080   →  http://localhost:8080/swagger-mock.html
+    SwaggerUIBundle({
+      url: "openapi-mock.yaml",
+      dom_id: "#swagger-ui",
+      docExpansion: "list",
+      defaultModelsExpandDepth: 0,
+    });
+  </script>
+</body>
+</html>
