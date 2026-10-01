@@ -1,729 +1,1411 @@
 openapi: 3.1.0
 info:
-  title: 차곡차곡 API (Mock 명세)
-  version: 0.1.0-mock
+  title: 차곡차곡 API v0.2 (Mock 명세)
+  version: 0.2.0-mock
   description: |
-    빌라 골목 주차 공유 앱 **차곡차곡** 백엔드의 Swagger 명세서입니다.
-    `app/api/v1/endpoints/*`, `app/schemas/*`, `app/services/*` 를 기준으로 작성했고, **예시 값은 모두 가짜(Mock) 데이터**입니다.
+    빌라 골목 주차 공유 앱 **차곡차곡**의 API 명세(v0.2)입니다. 프런트가 서버 없이 화면을 만들 수 있도록 **예시 값은 모두 가짜(Mock) 데이터**로 채웠습니다.
 
-    ### 이 명세서를 볼 때 알아둘 점
-    - 현재 구현된 엔드포인트만 담았습니다. 인증이 아직 없어서 `requester_id`, `host_id`, `owner_id` 는 요청 본문에 직접 넣습니다.
-    - 응답 `status` 같은 enum 은 **소문자 값**(`pending`, `accepted`, `rejected`)으로 주고받습니다. (DB 에는 대문자 이름으로 저장되지만 API 에는 보이지 않습니다.)
-    - 에러 본문은 항상 `{"detail": ...}` 입니다. 도메인 예외는 문자열, 요청 검증 실패(422)는 배열입니다.
-    - DB 제약 위반(`IntegrityError`)은 409 와 한글 메시지로 내려갑니다. (`app/core/db_errors.py`)
-    - 시간(`start_hour`, `end_hour`)은 정시 단위 정수이며 `24` 는 자정입니다. 요일은 `0`=월 … `6`=일 입니다.
+    ### 기준 문서
+    - Notion "차곡차곡 API 명세 v0.2" (엔드포인트·필드·에러 코드)
+    - Manyfast 와이어프레임 23개 화면 (문구·선택지·화면 흐름). 화면 번호 #1~#23 은 Notion 의 "화면 → API 매핑" 번호와 같습니다.
 
-    ### Mock 데이터 시나리오
+    - 현재 DB 스키마 (`app/models/`). 아래 네 가지는 Notion v0.2 대신 **DB 를 따릅니다**.
+
+    ### Notion v0.2 와 다르게 정한 것 (DB 기준)
+    | 항목 | Notion v0.2 | 이 명세 (DB 기준) |
+    |---|---|---|
+    | 결제 | 원 | **토큰**. `residents.token_balance` 로 보유, 수락 시 요청자 → 공유를 연 관리인에게 이동 (`token_transfers`) |
+    | 차고지(Garage) | 관리인이 등록하는 공유 상품 (칸 묶음 + 시간 + 요금) | **빌라 안의 주차 공간** (`garages`: 이름·유형). 기간·시간·토큰 가격은 칸마다 따로 두는 **공유 조건** (`share_offers`) 에 있음 |
+    | 계층 | Building > Zone > Lane > Slot (`depth`) | **골목(Alley) > 빌라(Building) > 차고지(Garage) > 칸(Slot)**. 막힘은 `front_slot_id` 로 계산 |
+    | 사용자–빌라 | 여러 빌라 소속 가능 (`BuildingMember`) | **한 사용자는 한 빌라에만 소속** (`residents.building_id`). 이미 소속된 사용자가 합류하면 409 |
+
+    > ⚠️ **현재 서버 구현과도 다릅니다.** 인증·경로·응답 모양은 설계(목표) 기준입니다. 이전에 만든 "현재 구현 기준" 명세(`/alleys`, `/share-offers` 등)는 git 이력(PR #1)에 있습니다.
+
+    ### 공통 규칙
+    | 항목 | 규칙 |
+    |---|---|
+    | 인증 | `Authorization: Bearer <access_token>` (`🔓` 표시 엔드포인트는 불필요) |
+    | 시간 | ISO 8601 + KST (`2026-09-30T14:40:00+09:00`), 시각만은 `"07:30"` |
+    | 공유 시간 | 날짜(`2026-09-30`) + **정시 단위** `start_hour`/`end_hour` (0~24, 24 = 자정). DB 가 정시 단위로 저장 |
+    | 요일 | `MON` `TUE` `WED` `THU` `FRI` `SAT` `SUN` (DB 는 0=월 ~ 6=일) |
+    | 금액 | 정수(**토큰**). 원 결제는 없음 |
+    | 페이지네이션 | `?cursor=&limit=20` → `{ "items": [], "next_cursor": null }` |
+    | 에러 | `{ "error": { "code", "message", "detail" } }` |
+    | 번호판 | 응답은 `12가 3456`(공백 포함). 요청은 공백 유무 모두 허용하고 서버가 정규화 |
+
+    ### Mock 데이터 시나리오 (기준 시각: 2026-09-30 수요일 14:40 KST)
     | 대상 | 내용 |
     |---|---|
-    | 골목 1 | 광운로19가길 — 한울빌라(1), 햇살빌라(2) 가 속함 |
-    | 입주민 1 | 김하늘 — 한울빌라 주민, 차량 1 (`12가3456`). 토큰으로 옆 빌라 칸을 빌림 |
-    | 입주민 2 | 박서준 — 햇살빌라 관리인, 칸 3 의 공유 조건(1)을 올린 host |
-    | 칸 1·2 | 한울빌라 필로티 안쪽 1·2번 (2번의 바로 앞 칸이 1번) |
-    | 칸 3 | 햇살빌라 골목 노상 1번 — 월~금 9~18시 시간당 3토큰으로 공유 |
-    | 공유 요청 1·2·3 | 대기 / 수락 / 거절 |
-  contact:
-    name: 차곡차곡 백엔드
+    | 골목 1 | 광운로19가길. 빌라 3(월계 한빛빌라)과 빌라 4(햇살빌라)가 속함 |
+    | 사용자 1 | 김지수 · 월계 한빛빌라 101동 202호 입주민 · 차량 7 (`12가 3456` 흰색, 대표) · 보유 토큰 30 |
+    | 사용자 2 | 박OO · 한빛빌라 관리인 |
+    | 사용자 3 | 302호 이웃 · 차량 `34나 5678` (지수 차량을 막고 있음) |
+    | 빌라 3 | 월계 한빛빌라, 초대코드 `HANBIT01`. 차고지 4개, 칸 8개: 차고지 10 필로티 안쪽(1·2) / 11 필로티 외부(1) / 12 건물 앞(1·2·3) / 13 골목(1·2) |
+    | 빌라 3 공유 조건 | 401 (필로티 외부 1번), 402 (골목 1번). 07~23시, 시간당 2토큰, 최대 4시간 |
+    | 빌라 4 | 햇살빌라. 차고지 21 "101동 차고지" 칸 2101~2105, 공유 조건 501~505 (시간당 2토큰, 최대 4시간) |
+
+    ### 와이어프레임 반영 사항
+    - 차량 색상 선택지: 검정·흰색·은색·회색·파랑·빨강·기타 (온보딩 화면 #5)
+    - 차량 관리 화면(#22)은 색상 대신 별칭·대표 설정만 있어 `color`, `alias` 를 모두 선택 입력으로 둠
+    - 차고지 칸 상태는 `AVAILABLE` / `SOON_EXIT` / `IN_USE` (#14), 탐색 목록은 `AVAILABLE` / `SOON_EXIT` / `RESERVABLE` / `UNAVAILABLE` (#13)
+    - 차고지 등록(#20)의 "최대 이용 시간: 제한 없음" 은 `max_hours: null`
+    - 요일 프리셋(매일·평일·주말·월~금·토~일)은 FE 에서 `weekdays` 배열로 변환
+    - 화면의 "○○원" 표기는 토큰으로 바꿔야 합니다 (#13, #14, #20)
+
+    ### 열린 질문 — Mock 에서 임시로 정한 값
+    | # | 내용 | Mock 에서의 처리 |
+    |---|---|---|
+    | 1 | 홈 요약 칩 정의 (14-1) | 빈칸=비어 있는 칸, 가능=빈칸+1시간 내 출차, 막힘=막힌 입주민 차량 수 (제안안) |
+    | 2 | 칸 이름 규칙 (14-2) | `차고지 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. 와이어프레임의 `A-1 구역`, `C-1 · 골목 후면` 형식과 다름 |
+    | 3 | 차량 색상 입력 (14-3) | 색상·별칭 모두 선택 |
+    | 4 | 공유 요청 시간 입력 화면 없음 (14-4) | 요청 본문에 `request_date`, `start_hour`, `end_hour` 를 받음 |
+    | 5 | 요금 단위 (14-5) | 시간당 토큰 `hourly_price`. 화면의 "30분당" 표기는 정시 단위 DB 와 맞지 않음 |
+    | 6 | 탐색 목록 단위 (14-6) | 차고지 단위. 공개된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 노출 |
+    | 7 | 온보딩 3단계 중 3단계 (14-7) | 미정. `onboarding_step` 은 JOIN_BUILDING → REGISTER_VEHICLE → DONE |
+    | 8 | 연락처 비노출 (14-9) vs 기존 "비노출 대상 아님" 기획 결정 | 본인에게만 마스킹 응답, 타인에겐 미제공 |
+    | 9 | 와이어프레임 데이터 불일치 | 김지수 동·호수 #10 은 203호, #23 은 202호 → **202호** 사용 |
+    | 10 | 와이어프레임 화면 링크 끊김 | 알림 목록(n26), 가입 완료(n7), 옮겼어요 완료(n31), 역할 안내(n54), 알림 설정(n55) 화면이 아직 없음 |
+    | 11 | 정의되지 않은 에러 코드 | `PLATE_EXISTS`, `ALREADY_DECIDED`, `MOVE_REQUEST_ALREADY_PENDING`, `ALREADY_IN_BUILDING`, `INSUFFICIENT_TOKENS` 를 **제안**으로 추가 |
+    | 12 | 차고지 등록 화면(#20)이 DB 와 다름 | 화면은 이름·상세 위치를 입력하고 칸을 여러 개 고르지만, DB 의 공유 조건은 칸 하나당 하나이고 이름·위치 컬럼이 없음 → **칸마다 한 번씩 등록**, 이름·위치 입력은 뺌 |
+    | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`·`unavailable_reason`, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
+    | 14 | 빌라 이동·탈퇴 | 한 빌라에만 소속되므로 이사하면 기존 빌라에서 나가야 하는데 그 API·화면이 없음 |
+    | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. 지급 방법(가입 시 지급 등) 미정 |
+    | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`)·`CANCELED`·`COMPLETED`(DB 에 없음), 이동 요청 `DONE`(DB `MOVED`), 대표 차량 `is_default`(DB `is_primary`) — Notion 이름을 유지함 |
 servers:
   - url: http://localhost:8000/api/v1
-    description: 로컬 (docker compose up)
+    description: 로컬
+security:
+  - bearerAuth: []
 tags:
-  - name: alleys
-    description: 골목. 최상위 운영 단위 (골목 > 빌라 > 차고지 > 칸)
-  - name: buildings
-    description: 빌라/건물. 골목에 속하고 `invite_code` 로 입주민이 합류
-  - name: parking-slots
-    description: 차고지 안의 번호로 특정되는 주차 칸 (2.5D 배치도 좌표 포함)
-  - name: vehicles
-    description: 차량. `owner_id` 가 null 이면 관리자가 등록한 미확인 차량
-  - name: departures
-    description: 출차 예정 (차 배치 화면 n15, 반복 요일 지원)
-  - name: share-offers
-    description: 칸 공유 조건 (기간·요일·정시 시간대·시간당 토큰)
-  - name: share-requests
-    description: 공유 조건에 대한 시간제 이용 요청과 수락/거절 (수락 시 토큰 이동)
-  - name: health
-    description: 상태 확인
+  - { name: auth, description: "인증 (#2 계정 만들기, #3 로그인)" }
+  - { name: users, description: "프로필·알림 설정 (#23)" }
+  - { name: buildings, description: "건물 합류(#4), 배치도·실시간 현황(#6). 한 사용자는 한 빌라에만 소속" }
+  - { name: home, description: "홈 집계 (#6)" }
+  - { name: vehicles, description: "차량 등록·관리·상세 (#5, #10, #22), 반복 출차 일정 (#9)" }
+  - { name: parkings, description: "주차 배치 등록·출차 일정 수정·출차 (#7, #8, #11)" }
+  - { name: move-requests, description: "이동 요청 (#12)" }
+  - { name: garages, description: "공유 주차 탐색·차고지 상세 (#13, #14). 같은 골목의 다른 빌라 차고지" }
+  - { name: share-requests, description: "공유 요청과 결과 확인 (#15~#17). 이용료는 토큰" }
+  - { name: admin, description: "관리인 (#18~#21), 🛠 해당 빌라 관리인만" }
+  - { name: notifications, description: "알림 목록·푸시 (알림 탭, 화면 미작성)" }
+  - { name: health, description: 상태 확인 }
 
 paths:
-  /alleys:
-    get:
-      tags: [alleys]
-      summary: 골목 목록
-      operationId: listAlleys
-      responses:
-        "200":
-          description: 골목 목록
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/AlleyRead" }
-              example:
-                - { id: 1, name: 광운로19가길, description: 월계동 광운대 인근 빌라 골목 }
-                - { id: 2, name: 월계로 12길, description: null }
+  # ───────────────────────── 인증 ─────────────────────────
+  /auth/signup:
     post:
-      tags: [alleys]
-      summary: 골목 생성
-      operationId: createAlley
+      tags: [auth]
+      summary: 🔓 계정 만들기 (#2)
+      description: |
+        비밀번호 확인 일치 검사는 FE 에서 합니다. `agree_terms=false` 면 400.
+        가입 직후 `onboarding_step` 은 `JOIN_BUILDING` 입니다.
+      operationId: signup
+      x-priority: 1주차
+      security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AlleyCreate" }
-            example: { name: 광운로19가길, description: 월계동 광운대 인근 빌라 골목 }
+            schema: { $ref: "#/components/schemas/SignupRequest" }
       responses:
         "201":
-          description: 생성됨
+          description: 가입 완료
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AlleyRead" }
-              example: { id: 1, name: 광운로19가길, description: 월계동 광운대 인근 빌라 골목 }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /alleys/{alley_id}:
-    get:
-      tags: [alleys]
-      summary: 골목 상세
-      operationId: getAlley
-      parameters:
-        - { $ref: "#/components/parameters/AlleyId" }
-      responses:
-        "200":
-          description: 골목
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AlleyRead" }
-              example: { id: 1, name: 광운로19가길, description: 월계동 광운대 인근 빌라 골목 }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /buildings:
-    get:
-      tags: [buildings]
-      summary: 빌라 목록
-      operationId: listBuildings
-      responses:
-        "200":
-          description: 빌라 목록
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/BuildingRead" }
-              example:
-                - { id: 1, alley_id: 1, name: 한울빌라, address: 서울특별시 노원구 광운로19가길 12, detail_address: A동 }
-                - { id: 2, alley_id: 1, name: 햇살빌라, address: 서울특별시 노원구 광운로19가길 18, detail_address: null }
-    post:
-      tags: [buildings]
-      summary: 빌라 등록 (운영팀)
-      description: "`invite_code` 는 입주민이 합류할 때 쓰는 코드이며 응답에는 포함되지 않습니다. 중복이면 409."
-      operationId: createBuilding
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/BuildingCreate" }
-            example:
-              alley_id: 1
-              name: 한울빌라
-              address: 서울특별시 노원구 광운로19가길 12
-              detail_address: A동
-              invite_code: HANUL2026
-      responses:
-        "201":
-          description: 생성됨 (invite_code 미포함)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/BuildingRead" }
-              example: { id: 1, alley_id: 1, name: 한울빌라, address: 서울특별시 노원구 광운로19가길 12, detail_address: A동 }
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "400": { $ref: "#/components/responses/InvalidInput" }
         "409":
-          description: 초대코드 중복 또는 존재하지 않는 골목
+          description: 이메일 중복
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                duplicateInviteCode: { value: { detail: 이미 사용 중인 초대코드입니다. } }
-                alleyMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /buildings/{building_id}:
+              example: { error: { code: EMAIL_EXISTS, message: 이미 가입된 이메일입니다., detail: null } }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 🔓 로그인 (#3)
+      operationId: login
+      x-priority: 1주차
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 로그인 성공 (응답은 signup 과 동일)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401":
+          description: 이메일 또는 비밀번호 불일치
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: INVALID_CREDENTIALS, message: 이메일 또는 비밀번호가 올바르지 않습니다., detail: null } }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 🔓 액세스 토큰 재발급
+      operationId: refreshToken
+      x-priority: 1주차
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+            example: { refresh_token: eyJhbGciOiJIUzI1NiJ9.refresh }
+      responses:
+        "200":
+          description: 새 토큰
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  refresh_token: { type: string }
+              example: { access_token: eyJhbGciOiJIUzI1NiJ9.access2, refresh_token: eyJhbGciOiJIUzI1NiJ9.refresh2 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 👤 로그아웃
+      operationId: logout
+      x-priority: 1주차
+      responses:
+        "204": { description: 로그아웃됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/password-reset:
+    post:
+      tags: [auth]
+      summary: 🔓 계정 찾기 (향후)
+      operationId: passwordReset
+      x-priority: 향후
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+            example: { email: kim@kw.ac.kr }
+      responses:
+        "202": { description: "재설정 메일 발송 (가입 여부와 관계없이 202)" }
+
+  # ───────────────────────── 사용자 ─────────────────────────
+  /users/me:
+    get:
+      tags: [users]
+      summary: 👤 내 정보 (#23)
+      operationId: getMe
+      x-priority: 1주차
+      responses:
+        "200":
+          description: 내 프로필 (연락처는 마스킹)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [users]
+      summary: 👤 프로필 저장 (#23)
+      description: |
+        `unit` 은 `residents.unit_no` 에 저장됩니다 (한 빌라에만 소속되므로 사용자당 하나).
+        `phone` 은 **다른 사용자에게 응답하지 않으며**, 본인에게도 마스킹해서 내려갑니다.
+      operationId: updateMe
+      x-priority: 1주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileUpdate" }
+      responses:
+        "200":
+          description: 저장됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMe" }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/me/notification-settings:
+    get:
+      tags: [users]
+      summary: 👤 알림 설정 조회 (#23 → 알림 설정)
+      operationId: getNotificationSettings
+      x-priority: 2주차
+      responses:
+        "200":
+          description: 알림 설정
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [users]
+      summary: 👤 알림 설정 변경
+      operationId: updateNotificationSettings
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationSettings" }
+      responses:
+        "200":
+          description: 변경됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationSettings" }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────── 건물 · 배치도 ─────────────────────────
+  /buildings/join:
+    post:
+      tags: [buildings]
+      summary: 👤 건물 합류 (#4)
+      description: |
+        초대코드로 건물에 합류합니다. 건물·차고지·칸은 운영팀이 미리 등록해 두며, 합류하면 건물 이름과 주소가 표시됩니다.
+        관리인/입주민 초대코드를 따로 두면 `role` 을 코드로 결정할 수 있습니다 (제안 15-1).
+
+        **한 사용자는 한 빌라에만 소속됩니다.** 이미 빌라에 소속된 사용자가 호출하면 같은 빌라든 다른 빌라든 409 `ALREADY_IN_BUILDING` 입니다.
+      operationId: joinBuilding
+      x-priority: 1주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invite_code]
+              properties:
+                invite_code: { type: string, maxLength: 12 }
+            example: { invite_code: HANBIT01 }
+      responses:
+        "200":
+          description: 합류 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  building_id: { type: integer }
+                  name: { type: string }
+                  address: { type: string }
+                  alley: { $ref: "#/components/schemas/AlleyRef" }
+                  role: { $ref: "#/components/schemas/BuildingRole" }
+                  onboarding_step: { $ref: "#/components/schemas/OnboardingStep" }
+              example:
+                building_id: 3
+                name: 월계 한빛빌라
+                address: 서울특별시 노원구 광운로19가길 12
+                alley: { id: 1, name: 광운로19가길 }
+                role: RESIDENT
+                onboarding_step: REGISTER_VEHICLE
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: 초대코드 오류
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: INVALID_INVITE_CODE, message: 초대코드가 올바르지 않습니다., detail: null } }
+        "409":
+          description: 이미 빌라에 소속됨 (제안 코드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: ALREADY_IN_BUILDING, message: 이미 다른 빌라에 소속되어 있습니다., detail: { building_id: 3 } } }
+  /buildings/{building_id}/layout:
     get:
       tags: [buildings]
-      summary: 빌라 상세
-      operationId: getBuilding
+      summary: 🏠 배치도 (정적, FE 캐싱) (#6)
+      description: |
+        DB 계층 그대로 **골목 > 빌라 > 차고지 > 칸** 을 내려줍니다.
+        - `rect` 는 건물 기준 미터 단위 로컬 좌표(`render_x0..y1`)이며 2.5D 배치도 렌더링·탭 판정에 씁니다
+        - `front_slot_id` 는 이 칸 바로 앞(출구 쪽) 칸입니다. 앞 칸에 차가 있으면 이 칸 차는 막힙니다
+        - 본인이 소속된 빌라만 조회할 수 있습니다 (아니면 403)
+      operationId: getBuildingLayout
+      x-priority: 1주차
       parameters:
         - { $ref: "#/components/parameters/BuildingId" }
       responses:
         "200":
-          description: 빌라
+          description: 배치도
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BuildingRead" }
-              example: { id: 1, alley_id: 1, name: 한울빌라, address: 서울특별시 노원구 광운로19가길 12, detail_address: A동 }
+              schema: { $ref: "#/components/schemas/BuildingLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /parking-slots:
+  /buildings/{building_id}/status:
     get:
-      tags: [parking-slots]
-      summary: 주차 칸 목록
-      operationId: listParkingSlots
-      parameters:
-        - name: building_id
-          in: query
-          required: false
-          description: 해당 빌라의 차고지에 속한 칸만 조회
-          schema: { type: integer }
-          example: 1
-      responses:
-        "200":
-          description: 칸 목록
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/ParkingSlotRead" }
-              example:
-                - { id: 1, garage_id: 1, number: 1, front_slot_id: null, render_x0: 0.0, render_y0: 0.0, render_x1: 2.5, render_y1: 5.0, is_active: true }
-                - { id: 2, garage_id: 1, number: 2, front_slot_id: 1, render_x0: 0.0, render_y0: 5.0, render_x1: 2.5, render_y1: 10.0, is_active: true }
-        "422": { $ref: "#/components/responses/ValidationError" }
-    post:
-      tags: [parking-slots]
-      summary: 주차 칸 생성
-      description: "같은 차고지에 같은 `number` 가 있으면 409. `number` 는 1 이상, `front_slot_id` 는 자기 자신 불가."
-      operationId: createParkingSlot
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/ParkingSlotCreate" }
-            example: { garage_id: 1, number: 2, front_slot_id: 1, render_x0: 0.0, render_y0: 5.0, render_x1: 2.5, render_y1: 10.0 }
-      responses:
-        "201":
-          description: 생성됨
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ParkingSlotRead" }
-              example: { id: 2, garage_id: 1, number: 2, front_slot_id: 1, render_x0: 0.0, render_y0: 5.0, render_x1: 2.5, render_y1: 10.0, is_active: true }
-        "409":
-          description: 제약 위반
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                duplicateNumber: { value: { detail: 같은 차고지에 같은 번호의 칸이 있습니다. } }
-                invalidNumber: { value: { detail: 칸 번호는 1 이상이어야 합니다. } }
-                selfFront: { value: { detail: 자기 자신을 앞 칸으로 지정할 수 없습니다. } }
-                garageMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /parking-slots/{slot_id}:
-    get:
-      tags: [parking-slots]
-      summary: 주차 칸 상세
-      operationId: getParkingSlot
-      parameters:
-        - { $ref: "#/components/parameters/SlotId" }
-      responses:
-        "200":
-          description: 칸
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ParkingSlotRead" }
-              example: { id: 3, garage_id: 2, number: 1, front_slot_id: null, render_x0: 0.0, render_y0: 0.0, render_x1: 2.5, render_y1: 5.0, is_active: true }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /vehicles:
-    get:
-      tags: [vehicles]
-      summary: 차량 목록
-      operationId: listVehicles
-      responses:
-        "200":
-          description: 차량 목록. `owner_id` 가 null 이면 미확인 차량
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/VehicleRead" }
-              example:
-                - { id: 1, plate_no: 12가3456, color: 흰색, nickname: 하늘이 차, is_primary: true, owner_id: 1 }
-                - { id: 2, plate_no: 34나7890, color: 검정, nickname: null, is_primary: true, owner_id: 2 }
-                - { id: 3, plate_no: 56다1234, color: null, nickname: null, is_primary: false, owner_id: null }
-    post:
-      tags: [vehicles]
-      summary: 차량 등록
+      tags: [buildings]
+      summary: 🏠 실시간 현황 (배치도 위 오버레이) (#6)
       description: |
-        `owner_id` 를 생략하면 관리자가 등록한 **미확인 차량**이 됩니다.
-        차량 번호는 전체에서 유일하고, 대표 차량(`is_primary`)은 사용자당 한 대입니다.
-      operationId: createVehicle
+        칸마다 상태·주차 정보·막힘 관계를 내려줍니다. 막힘 규칙: **앞 칸(`front_slot_id`)에 차가 있으면 이 칸 차는 막힘**.
+        입주민의 출차 시간 원본은 같은 빌라 입주민에게만 보이고, 공유 탐색(#13)에는 `estimated_free_at` 만 노출됩니다.
+      operationId: getBuildingStatus
+      x-priority: 1주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+      responses:
+        "200":
+          description: 현황
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BuildingStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── 홈 ─────────────────────────
+  /me/home:
+    get:
+      tags: [home]
+      summary: 🏠 홈 화면 한 번에 조회 (#6)
+      description: |
+        여러 카드를 한 번에 그리기 위한 집계 API 입니다.
+        - 한 사용자는 한 빌라에만 소속되므로 **`building_id` 를 받지 않습니다**. 소속 빌라가 없으면 403
+        - `block_alert` 가 `null` 이면 막힘 카드를 숨깁니다. "이동 요청 보내기" → `POST /move-requests`
+        - `admin` 은 관리인일 때만 포함됩니다 (`{ "pending_share_requests": 4 }`)
+        - 요약 칩 정의는 열린 질문 #1 참고
+      operationId: getHome
+      x-priority: 1주차
+      responses:
+        "200":
+          description: 홈 집계
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Home" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+
+  # ───────────────────────── 차량 ─────────────────────────
+  /me/vehicles:
+    get:
+      tags: [vehicles]
+      summary: 👤 차량 관리 목록 (#22)
+      operationId: listMyVehicles
+      x-priority: 1주차
+      responses:
+        "200":
+          description: 내 차량 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/VehicleListItem" }
+              example:
+                items:
+                  - { id: 7, plate: 12가 3456, alias: 내 차, color: 흰색, is_default: true, status: PARKED, status_text: 현재 주차 중 }
+                  - { id: 8, plate: 78나 9012, alias: 가족 차, color: null, is_default: false, status: OUT, status_text: 외부 출차 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [vehicles]
+      summary: 👤 차량 정보 등록(온보딩 #5) / 차량 추가(#22)
+      description: |
+        - 번호판 형식 검증: 공백 제거 후 `^\d{2,3}[가-힣]\d{4}$`
+        - `is_default=true` 면 기존 대표 차량은 해제됩니다
+        - 온보딩에서 등록하면 `onboarding_step` 이 `DONE` 으로 바뀝니다 (열린 질문 #7)
+      operationId: createMyVehicle
+      x-priority: 1주차
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/VehicleCreate" }
             examples:
-              resident:
-                summary: 입주민 차량
-                value: { plate_no: 12가3456, color: 흰색, nickname: 하늘이 차, is_primary: true, owner_id: 1 }
-              unknown:
-                summary: 미확인 차량 (관리자 등록)
-                value: { plate_no: 56다1234 }
+              onboarding:
+                summary: 온보딩 (#5) — 번호판 + 색상
+                value: { plate: 12가3456, color: 흰색, is_default: true }
+              management:
+                summary: 차량 추가 (#22) — 번호판 + 별칭
+                value: { plate: 78나9012, alias: 가족 차, is_default: false }
       responses:
         "201":
-          description: 생성됨
+          description: 등록됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/VehicleRead" }
-              example: { id: 1, plate_no: 12가3456, color: 흰색, nickname: 하늘이 차, is_primary: true, owner_id: 1 }
+              schema: { $ref: "#/components/schemas/VehicleListItem" }
+              example: { id: 7, plate: 12가 3456, alias: 내 차, color: 흰색, is_default: true, status: OUT, status_text: 외부 출차 }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "409":
-          description: 제약 위반
+          description: 번호판 중복 (제안 코드)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                duplicatePlate: { value: { detail: 이미 등록된 차량 번호입니다. } }
-                duplicatePrimary: { value: { detail: 대표 차량은 한 대만 지정할 수 있습니다. } }
-                ownerMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /vehicles/{vehicle_id}:
+              example: { error: { code: PLATE_EXISTS, message: 이미 등록된 차량 번호입니다., detail: null } }
+  /me/vehicles/{vehicle_id}:
+    parameters:
+      - { $ref: "#/components/parameters/VehicleId" }
     get:
       tags: [vehicles]
-      summary: 차량 상세
-      operationId: getVehicle
-      parameters:
-        - { $ref: "#/components/parameters/VehicleId" }
+      summary: 👤 차량 상세 (#10)
+      description: '"주차 위치" 이미지는 `layout` + `slot_id` 로 FE 가 강조 표시합니다. 주차 중이 아니면 `parking`, `schedule` 은 `null`.'
+      operationId: getMyVehicle
+      x-priority: 1주차
       responses:
         "200":
-          description: 차량
+          description: 차량 상세
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/VehicleRead" }
-              example: { id: 1, plate_no: 12가3456, color: 흰색, nickname: 하늘이 차, is_primary: true, owner_id: 1 }
+              schema: { $ref: "#/components/schemas/VehicleDetail" }
+              examples:
+                manual:
+                  summary: 직접 등록한 출차 일정
+                  value:
+                    id: 7
+                    plate: 12가 3456
+                    color: 흰색
+                    owner: { name: 김지수, unit: 101동 202호 }
+                    parking: { parking_id: 556, slot_id: 1001, slot_label: 필로티 안쪽 1번, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
+                    schedule: { expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL, elapsed_minutes: 370 }
+                ai:
+                  summary: AI 추정 출차 (화면 #10 의 "AI 추정" 칩)
+                  value:
+                    id: 7
+                    plate: 12가 3456
+                    color: 흰색
+                    owner: { name: 김지수, unit: 101동 202호 }
+                    parking: { parking_id: 556, slot_id: 1001, slot_label: 필로티 안쪽 1번, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
+                    schedule: { expected_exit_at: "2026-09-30T18:00:00+09:00", exit_source: AI_ESTIMATED, elapsed_minutes: 370 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /departures:
-    get:
-      tags: [departures]
-      summary: 출차 예정 목록
-      operationId: listDepartures
-      parameters:
-        - name: vehicle_id
-          in: query
-          required: false
-          description: 해당 차량의 출차 예정만 조회
-          schema: { type: integer }
-          example: 1
-      responses:
-        "200":
-          description: 출차 예정 목록
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/DepartureScheduleRead" }
-              example:
-                - { id: 1, vehicle_id: 1, scheduled_date: "2026-10-02", scheduled_time: "08:30:00", repeat_weekdays: [], memo: 내일 병원 가요, is_ai_estimated: false }
-                - { id: 2, vehicle_id: 1, scheduled_date: "2026-10-05", scheduled_time: "08:00:00", repeat_weekdays: [0, 1, 2, 3, 4], memo: 평일 출근, is_ai_estimated: false }
-                - { id: 3, vehicle_id: 2, scheduled_date: "2026-10-02", scheduled_time: "07:50:00", repeat_weekdays: [], memo: null, is_ai_estimated: true }
-        "422": { $ref: "#/components/responses/ValidationError" }
-    post:
-      tags: [departures]
-      summary: 출차 예정 등록
-      description: |
-        차 배치 화면(n15)에서 '내일 몇 시에 나가요' 등록 시 호출합니다.
-        반복이면 `repeat_weekdays` 에 요일(0=월 … 6=일)을 넣고, 이때 `scheduled_date` 는 반복 시작일입니다.
-        `is_ai_estimated` 는 서버가 정하며 요청에서 받지 않습니다 (사용자 등록은 항상 `false`).
-      operationId: createDeparture
+    patch:
+      tags: [vehicles]
+      summary: 👤 차량 정보 수정 모달 (#22)
+      operationId: updateMyVehicle
+      x-priority: 1주차
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DepartureScheduleCreate" }
-            examples:
-              once:
-                summary: 하루만
-                value: { vehicle_id: 1, scheduled_date: "2026-10-02", scheduled_time: "08:30:00", memo: 내일 병원 가요 }
-              weekly:
-                summary: 평일 반복
-                value: { vehicle_id: 1, scheduled_date: "2026-10-05", scheduled_time: "08:00:00", repeat_weekdays: [0, 1, 2, 3, 4], memo: 평일 출근 }
+            schema: { $ref: "#/components/schemas/VehicleUpdate" }
+            example: { plate: 12가3456, alias: 내 차, is_default: true }
       responses:
-        "201":
-          description: 생성됨
+        "200":
+          description: 수정됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DepartureScheduleRead" }
-              example: { id: 1, vehicle_id: 1, scheduled_date: "2026-10-02", scheduled_time: "08:30:00", repeat_weekdays: [], memo: 내일 병원 가요, is_ai_estimated: false }
+              schema: { $ref: "#/components/schemas/VehicleListItem" }
+              example: { id: 7, plate: 12가 3456, alias: 내 차, color: 흰색, is_default: true, status: PARKED, status_text: 현재 주차 중 }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: 제약 위반
+          description: 번호판 중복 (제안 코드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: PLATE_EXISTS, message: 이미 등록된 차량 번호입니다., detail: null } }
+    delete:
+      tags: [vehicles]
+      summary: 👤 차량 삭제 모달 (#22)
+      description: 주차 중인 차량이면 409 `VEHICLE_ALREADY_PARKED`.
+      operationId: deleteMyVehicle
+      x-priority: 1주차
+      responses:
+        "204": { description: 삭제됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 주차 중이라 삭제 불가
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: VEHICLE_ALREADY_PARKED, message: 주차 중인 차량은 삭제할 수 없습니다., detail: { parking_id: 556 } } }
+  /me/vehicles/{vehicle_id}/recurring-schedule:
+    parameters:
+      - { $ref: "#/components/parameters/VehicleId" }
+    get:
+      tags: [vehicles]
+      summary: 👤 반복 출차 일정 조회 (#9)
+      operationId: getRecurringSchedule
+      x-priority: 2주차
+      responses:
+        "200":
+          description: 반복 일정
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecurringSchedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [vehicles]
+      summary: 👤 반복 출차 일정 설정 (#9)
+      description: 다음 주차 시 `expected_exit_at` 이 자동으로 채워지고 `exit_source` 는 `RECURRING` 이 됩니다.
+      operationId: putRecurringSchedule
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecurringSchedule" }
+      responses:
+        "200":
+          description: 저장됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecurringSchedule" }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [vehicles]
+      summary: 👤 반복 출차 일정 해제
+      operationId: deleteRecurringSchedule
+      x-priority: 2주차
+      responses:
+        "204": { description: 해제됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── 주차 배치 · 출차 ─────────────────────────
+  /buildings/{building_id}/slots/recommendations:
+    get:
+      tags: [parkings]
+      summary: 🏠 배치 등록 화면 태그·추천 (#7)
+      description: |
+        출차 시간을 바꿀 때마다 다시 호출합니다. 앞 칸(`front_slot_id`) 관계를 따져 막힘이 가장 적은 안쪽 칸을 추천합니다.
+
+        ⚠️ `expected_exit_at` 의 `+` 는 쿼리 문자열에서 공백으로 해석되므로 **`%2B` 로 인코딩**해야 합니다.
+      operationId: getSlotRecommendations
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+        - name: vehicle_id
+          in: query
+          required: true
+          schema: { type: integer }
+          example: 7
+        - name: expected_exit_at
+          in: query
+          required: false
+          description: 상시 주차면 생략
+          schema: { type: string, format: date-time }
+          example: "2026-10-01T07:30:00+09:00"
+      responses:
+        "200":
+          description: 칸별 태그
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/SlotRecommendation" }
+              example:
+                slots:
+                  - { slot_id: 1007, tag: RECOMMENDED, label: 골목 1번 (안쪽), reason: 지금 선 차들보다 늦게 나가서 안쪽이 좋아요 }
+                  - { slot_id: 1008, tag: EMPTY, label: 골목 2번, will_block: [1007] }
+                  - { slot_id: 1005, tag: UNAVAILABLE, label: 건물 앞 2번, unavailable_reason: 관리인이 사용 중지한 칸이에요 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+  /parkings:
+    post:
+      tags: [parkings]
+      summary: 🏠 "여기에 배치하기" (#7)
+      description: |
+        - `is_long_term=true`(상시 주차) 면 `expected_exit_at` 을 생략할 수 있습니다
+        - `repeat_weekdays=true`(평일 반복) 면 평일(월~금) 같은 시각으로 반복 일정을 함께 만듭니다. 요일을 직접 고르려면 #9 API 사용
+        - 사용 불가 칸 → 409 `SLOT_UNAVAILABLE` + `detail.reason` → **사용 불가 안내 모달(#11)**
+        - 동시성: 해당 칸과 앞·뒤 칸을 `SELECT ... FOR UPDATE` 로 잠근 뒤 재검증
+      operationId: createParking
+      x-priority: 1주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ParkingCreate" }
+            examples:
+              normal:
+                summary: 내일 07:30 출차, 평일 반복
+                value: { slot_id: 1001, vehicle_id: 7, is_long_term: false, expected_exit_at: "2026-10-01T07:30:00+09:00", repeat_weekdays: true, memo: 출근 }
+              longTerm:
+                summary: 상시 주차
+                value: { slot_id: 1001, vehicle_id: 7, is_long_term: true, repeat_weekdays: false }
+      responses:
+        "201":
+          description: 배치됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParkingCreated" }
+              example: { id: 556, slot_id: 1001, state: PARKED, expected_exit_at: "2026-10-01T07:30:00+09:00", exit_source: MANUAL, blocking: [] }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+        "409":
+          description: 칸 사용 불가 / 사용 중 / 이미 주차 중
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               examples:
-                badWeekday: { value: { detail: 반복 요일은 0(월)~6(일) 사이여야 합니다. } }
-                vehicleMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /departures/{schedule_id}:
-    get:
-      tags: [departures]
-      summary: 출차 예정 상세
-      operationId: getDeparture
+                unavailable:
+                  summary: 사용 불가 칸 (#11 모달)
+                  value: { error: { code: SLOT_UNAVAILABLE, message: 해당 칸을 사용할 수 없습니다., detail: { reason: 선택한 주차 칸은 현재 사용이 불가합니다. 다른 칸을 선택해 주세요. } } }
+                occupied:
+                  value: { error: { code: SLOT_OCCUPIED, message: 이미 다른 차량이 주차 중인 칸입니다., detail: null } }
+                alreadyParked:
+                  value: { error: { code: VEHICLE_ALREADY_PARKED, message: 이미 주차 중인 차량입니다., detail: { parking_id: 556 } } }
+  /parkings/{parking_id}/schedule:
+    put:
+      tags: [parkings]
+      summary: 🏠 출차 일정 수정 (#8)
+      description: |
+        배치는 그대로 두고 시간만 바꿉니다. **시간이 앞당겨지고 이 차를 막는 차가 있으면 즉시 알림**(제안 13-2)을 보냅니다.
+      operationId: updateParkingSchedule
+      x-priority: 1주차
       parameters:
-        - { $ref: "#/components/parameters/ScheduleId" }
+        - { $ref: "#/components/parameters/ParkingId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_exit_at]
+              properties:
+                expected_exit_at: { type: string, format: date-time }
+                memo: { type: [string, "null"] }
+            example: { expected_exit_at: "2026-09-30T19:00:00+09:00", memo: 늦게 출근 }
       responses:
         "200":
-          description: 출차 예정
+          description: 수정됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DepartureScheduleRead" }
-              example: { id: 1, vehicle_id: 1, scheduled_date: "2026-10-02", scheduled_time: "08:30:00", repeat_weekdays: [], memo: 내일 병원 가요, is_ai_estimated: false }
+              schema:
+                type: object
+                properties:
+                  parking_id: { type: integer }
+                  expected_exit_at: { type: string, format: date-time }
+                  exit_source: { $ref: "#/components/schemas/ExitSource" }
+                  memo: { type: [string, "null"] }
+              example: { parking_id: 556, expected_exit_at: "2026-09-30T19:00:00+09:00", exit_source: MANUAL, memo: 늦게 출근 }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /share-offers:
-    get:
-      tags: [share-offers]
-      summary: 공유 조건 목록
-      operationId: listShareOffers
+  /parkings/{parking_id}/exit:
+    post:
+      tags: [parkings]
+      summary: 🏠 출차 처리
+      description: 같은 빌라 입주민에게 `EXIT_DONE` 알림("건물 앞 1번 비어 있음")을 보냅니다.
+      operationId: exitParking
+      x-priority: 1주차
       parameters:
-        - name: slot_id
+        - { $ref: "#/components/parameters/ParkingId" }
+      responses:
+        "200":
+          description: 출차됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  state: { $ref: "#/components/schemas/ParkingState" }
+                  actual_exit_at: { type: string, format: date-time }
+                  on_time: { type: boolean, description: 예정 시각 대비 정시 출차 여부 }
+              example: { id: 556, state: EXITED, actual_exit_at: "2026-09-30T18:25:00+09:00", on_time: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ───────────────────────── 이동 요청 ─────────────────────────
+  /move-requests:
+    post:
+      tags: [move-requests]
+      summary: 🏠 이동 요청 보내기 (#6 막힘 카드, #18)
+      description: |
+        관리인은 외부 차량(`EXTERNAL`)에도 요청할 수 있습니다.
+        `UNKNOWN` 차량은 연락 수단이 없어("앱으로 연락 불가") 400 입니다.
+        같은 차에 대기 중인 요청이 있으면 409 (제안 코드).
+      operationId: createMoveRequest
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_parking_id, needed_at]
+              properties:
+                target_parking_id: { type: integer, description: 이동을 요청할 차량의 주차 건 }
+                needed_at: { type: string, format: date-time, description: 출차가 필요한 시각 }
+                reason: { type: [string, "null"] }
+                is_urgent: { type: boolean, default: false }
+            example:
+              target_parking_id: 555
+              needed_at: "2026-09-30T15:00:00+09:00"
+              reason: 외출 예정으로 출차가 필요합니다.
+              is_urgent: true
+      responses:
+        "201":
+          description: 요청됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { $ref: "#/components/schemas/MoveRequestStatus" }
+              example: { id: 44, status: PENDING }
+        "400":
+          description: 검증 실패 / 미확인 차량
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: INVALID_INPUT, message: 앱으로 연락할 수 없는 차량입니다., detail: { reason: UNKNOWN_VEHICLE } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+        "409":
+          description: 이미 대기 중인 요청 (제안 코드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: MOVE_REQUEST_ALREADY_PENDING, message: 이 차량에 대기 중인 이동 요청이 이미 있습니다., detail: { move_request_id: 44 } } }
+  /move-requests/{move_request_id}:
+    get:
+      tags: [move-requests]
+      summary: 🏠 이동 요청 수신 화면 (#12)
+      description: |
+        요청자는 동까지만 익명으로 표시합니다. `my_vehicle` 은 이동을 요청받은 내 차량, `blocked_vehicle` 은 막힌 차량입니다.
+        공유 이용자(외부)가 관련되면 차량번호 마스킹이 필요합니다 (열린 질문, Notion 14-8).
+      operationId: getMoveRequest
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/MoveRequestId" }
+      responses:
+        "200":
+          description: 이동 요청 상세 (수신자 302호 시점)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MoveRequestDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /move-requests/{move_request_id}/done:
+    post:
+      tags: [move-requests]
+      summary: 🏠 "옮겼어요" (#12)
+      description: 요청자에게 알림을 보내고, 응답 시간은 차곡이 온도에 반영합니다.
+      operationId: doneMoveRequest
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/MoveRequestId" }
+      responses:
+        "200":
+          description: 처리됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { $ref: "#/components/schemas/MoveRequestStatus" }
+                  responded_at: { type: string, format: date-time }
+              example: { id: 44, status: DONE, responded_at: "2026-09-30T14:41:00+09:00" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 이미 처리됐거나 만료됨 (제안 코드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: EXPIRED } } }
+  /me/move-requests:
+    get:
+      tags: [move-requests]
+      summary: 👤 내 이동 요청 목록
+      operationId: listMyMoveRequests
+      x-priority: 2주차
+      parameters:
+        - name: box
           in: query
-          required: false
-          description: 해당 칸의 공유 조건만 조회
-          schema: { type: integer }
-          example: 3
-        - name: public_only
+          required: true
+          description: 받은 요청 / 보낸 요청
+          schema: { type: string, enum: [received, sent] }
+          example: received
+      responses:
+        "200":
+          description: 이동 요청 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        status: { $ref: "#/components/schemas/MoveRequestStatus" }
+                        is_urgent: { type: boolean }
+                        requested_at: { type: string, format: date-time }
+                        counterpart_label: { type: string, description: 상대방 표기 (동까지만) }
+                        needed_at: { type: string, format: date-time }
+              example:
+                items:
+                  - { id: 44, status: PENDING, is_urgent: true, requested_at: "2026-09-30T14:34:00+09:00", counterpart_label: 101동 입주민, needed_at: "2026-09-30T15:00:00+09:00" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────── 공유 주차 (이용자) ─────────────────────────
+  /garages:
+    get:
+      tags: [garages]
+      summary: 👤 공유 주차 탐색 (#13)
+      description: |
+        **내 빌라와 같은 골목(alley)에 있는 다른 빌라의 차고지** 중, 공개(`is_public=true`)된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 내려갑니다.
+        차고지는 빌라 안의 주차 공간(DB `garages`)이고, 요금·시간 같은 공유 조건은 칸마다 다를 수 있어 목록에는 가장 싼 값(`min_hourly_price`, 토큰)을 보여줍니다.
+        입주민 출차 시간 원본은 노출하지 않고 `estimated_free_at` 만 제공합니다.
+        필터: `all`(전체) · `now`(즉시 가능) · `reservable`(예약 가능) · `free`(무료, 0토큰)
+      operationId: listGarages
+      x-priority: 2주차
+      parameters:
+        - { name: lat, in: query, schema: { type: number }, example: 37.62 }
+        - { name: lng, in: query, schema: { type: number }, example: 127.06 }
+        - { name: q, in: query, description: 주소·빌라명 검색, schema: { type: string }, example: 햇살 }
+        - name: filter
           in: query
-          required: false
-          description: "`true` 면 공개 중인 조건만 (공유 중단은 제외)"
-          schema: { type: boolean, default: false }
+          schema: { type: string, enum: [all, now, reservable, free], default: all }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: 차고지 목록
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GarageListPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /garages/{garage_id}:
+    get:
+      tags: [garages]
+      summary: 👤 차고지 상세 (#14)
+      description: |
+        차고지의 칸 목록과 칸별 공유 조건(`offer`)을 내려줍니다. `offer` 가 `null` 인 칸은 공유하지 않는 칸입니다.
+        "요청하기" 는 고른 칸의 `offer.id` 로 `POST /share-requests` 를 호출합니다.
+      operationId: getGarage
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/GarageId" }
+      responses:
+        "200":
+          description: 차고지 상세
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GarageDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /share-requests:
+    post:
+      tags: [share-requests]
+      summary: 👤 "요청하기" (#14 → #15)
+      description: |
+        공유 조건(`offer_id`) 하나에 날짜와 정시 단위 시간을 골라 요청합니다.
+        - 이용료: `total_price = (end_hour - start_hour) × offer.hourly_price` **토큰**. 요청 시점 가격으로 고정됩니다
+        - 요청 시 보유 토큰이 모자라면 409 `INSUFFICIENT_TOKENS`. **토큰은 수락될 때 빠져나갑니다** (요청만으로는 차감 없음)
+        - 검증: 공유 기간·요일·운영시간·`max_hours` 이내여야 하고(400), 수락된 다른 요청과 시간이 겹치면 409 `GARAGE_TIME_CONFLICT`
+        - 내가 연 공유 조건에는 요청할 수 없습니다 (400)
+        - 관리인에게 `SHARE_REQUEST` 알림이 갑니다
+
+        ⚠️ 와이어프레임에 이용 시간 선택 화면이 없습니다 (Notion 14-4). 날짜·시작·종료 시간 선택 바텀시트가 필요합니다.
+      operationId: createShareRequest
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShareRequestCreate" }
+      responses:
+        "201":
+          description: 요청됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { $ref: "#/components/schemas/ShareRequestStatus" }
+                  total_price: { type: integer, description: 토큰 }
+              example: { id: 301, status: PENDING, total_price: 6 }
+        "400":
+          description: 공유 기간·운영시간·요일·최대 이용 시간 위반
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                outsideHours: { value: { error: { code: INVALID_INPUT, message: 운영 시간 밖입니다., detail: { start_hour: 7, end_hour: 23 } } } }
+                exceedMaxHours: { value: { error: { code: INVALID_INPUT, message: 최대 이용 시간을 초과했습니다., detail: { max_hours: 4 } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 토큰 부족 / 시간 겹침
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                insufficientTokens:
+                  summary: 토큰 부족 (제안 코드)
+                  value: { error: { code: INSUFFICIENT_TOKENS, message: 토큰이 부족합니다., detail: { required: 6, balance: 4 } } }
+                timeConflict:
+                  value: { error: { code: GARAGE_TIME_CONFLICT, message: 요청한 시간에 이미 다른 예약이 있습니다., detail: null } }
+  /share-requests/{share_request_id}:
+    get:
+      tags: [share-requests]
+      summary: 👤 요청 결과 확인·수락·거절 안내 (#15~#17)
+      description: FE 는 `status` 로 세 화면(요청 확인 중 / 수락됨 / 거절됨)을 분기합니다. 결과 알림(`SHARE_RESULT`) 탭 시에도 이 API 를 호출합니다.
+      operationId: getShareRequest
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/ShareRequestId" }
+      responses:
+        "200":
+          description: 요청 상세
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareRequestDetail" }
+              examples:
+                pending:
+                  summary: "#15 요청 확인 중"
+                  value: { id: 301, status: PENDING, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                approved:
+                  summary: "#16 요청 수락됨"
+                  value: { id: 301, status: APPROVED, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                rejected:
+                  summary: "#17 요청 거절됨"
+                  value: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/share-requests:
+    get:
+      tags: [share-requests]
+      summary: 👤 내 공유 요청 목록
+      operationId: listMyShareRequests
+      x-priority: 2주차
+      responses:
+        "200":
+          description: 내가 보낸 요청
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ShareRequestDetail" }
+              example:
+                items:
+                  - { id: 301, status: PENDING, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /share-requests/{share_request_id}/cancel:
+    post:
+      tags: [share-requests]
+      summary: 👤 공유 요청 취소
+      operationId: cancelShareRequest
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/ShareRequestId" }
+      responses:
+        "200":
+          description: 취소됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { $ref: "#/components/schemas/ShareRequestStatus" }
+              example: { id: 301, status: CANCELED }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 이미 처리된 요청 (제안 코드)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: APPROVED } } }
+
+  # ───────────────────────── 관리인 ─────────────────────────
+  /admin/buildings/{building_id}/dashboard:
+    get:
+      tags: [admin]
+      summary: 🛠 관리자 대시보드 (#18)
+      description: |
+        - `congestion.days[].peak_occupied` 는 하루 중 가장 붐빈 시간의 점유 칸 수입니다 (총 8칸)
+        - `ai_insight` 는 향후 기능이라 지금은 항상 `null` 입니다 (FE 는 "AI 분석 (향후)" 카드를 고정 표시)
+        - 요청자 이름은 `박○○` 처럼 마스킹됩니다
+      operationId: getAdminDashboard
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+        - name: month
+          in: query
+          schema: { type: string, pattern: '^\d{4}-\d{2}$' }
+          example: "2026-09"
+      responses:
+        "200":
+          description: 대시보드
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDashboard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+  /admin/share-requests/{share_request_id}:
+    patch:
+      tags: [admin]
+      summary: 🛠 공유 요청 수락 / 거절 (#18, #21)
+      description: |
+        **수락하면 `total_price` 토큰이 요청자에게서 공유 조건을 연 관리인(`host`)에게 넘어가고** `token_transfers` 에 기록됩니다. 무료(0토큰)면 이동이 없습니다.
+        수락 시점에 요청자 토큰이 모자라면 409 `INSUFFICIENT_TOKENS` 이고 요청은 `PENDING` 으로 남습니다.
+        요청자에게 `SHARE_RESULT` 알림이 갑니다. 거절 사유 프리셋(`용량 초과` · `시간 불가` · `기타`)은 제안 15-3 입니다.
+      operationId: decideShareRequest
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/ShareRequestId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+                reject_reason: { type: [string, "null"] }
+            examples:
+              approve: { summary: 수락, value: { status: APPROVED } }
+              reject: { summary: 거절, value: { status: REJECTED, reject_reason: 주차 구역 용량 초과 } }
+      responses:
+        "200":
+          description: 처리됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { $ref: "#/components/schemas/ShareRequestStatus" }
+                  reject_reason: { type: [string, "null"] }
+                  responded_at: { type: string, format: date-time }
+              example: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, responded_at: "2026-09-30T14:45:00+09:00" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 시간 겹침 / 이미 처리됨 / 요청자 토큰 부족
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                insufficientTokens: { summary: 요청자 토큰 부족 (제안 코드), value: { error: { code: INSUFFICIENT_TOKENS, message: 요청자의 토큰이 부족합니다., detail: { required: 8, balance: 4 } } } }
+                conflict: { value: { error: { code: GARAGE_TIME_CONFLICT, message: 이미 수락된 다른 예약과 시간이 겹칩니다., detail: null } } }
+                decided: { value: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: APPROVED } } } }
+  /admin/buildings/{building_id}/share-requests:
+    get:
+      tags: [admin]
+      summary: 🛠 공유 요청 관리 (#21)
+      operationId: listAdminShareRequests
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, PENDING, APPROVED, REJECTED], default: all }
+        - { name: q, in: query, description: 요청자 또는 차량번호 검색, schema: { type: string }, example: 홍길동 }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: 요청 목록
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminShareRequestPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+  /admin/buildings/{building_id}/slots:
+    get:
+      tags: [admin]
+      summary: 🛠 주차 구역 설정 목록 (#19)
+      description: "차고지·칸 추가·삭제는 운영팀 전용이라 관리인 API 가 없습니다. `share_offer_id` 가 있으면 공유 조건이 걸린 칸입니다."
+      operationId: listAdminSlots
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+      responses:
+        "200":
+          description: 칸 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminSlot" }
+              example:
+                items:
+                  - { slot_id: 1001, garage_id: 10, number: 1, label: 필로티 안쪽 1번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1002, garage_id: 10, number: 2, label: 필로티 안쪽 2번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1003, garage_id: 11, number: 1, label: 필로티 외부 1번, is_active: true, occupied: true, share_offer_id: 401 }
+                  - { slot_id: 1004, garage_id: 12, number: 1, label: 건물 앞 1번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1005, garage_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
+                  - { slot_id: 1006, garage_id: 12, number: 3, label: 건물 앞 3번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1007, garage_id: 13, number: 1, label: 골목 1번, is_active: true, occupied: false, share_offer_id: 402 }
+                  - { slot_id: 1008, garage_id: 13, number: 2, label: 골목 2번, is_active: true, occupied: false, share_offer_id: null }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+  /admin/slots/{slot_id}:
+    patch:
+      tags: [admin]
+      summary: 🛠 칸 설정 모달 (#19)
+      description: "`is_active=false` 면 배치도에서 선택할 수 없습니다(`UNAVAILABLE`). DB 는 칸을 지우지 않고 비활성화합니다. 공유 여부는 여기서 바꾸지 않고 공유 조건 API 로 등록·삭제합니다."
+      operationId: updateAdminSlot
+      x-priority: 2주차
+      parameters:
+        - { name: slot_id, in: path, required: true, schema: { type: integer }, example: 1005 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_active: { type: boolean }
+            example: { is_active: false }
+      responses:
+        "200":
+          description: 변경됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSlot" }
+              example: { slot_id: 1005, garage_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/buildings/{building_id}/share-offers:
+    get:
+      tags: [admin]
+      summary: 🛠 등록한 공유 조건 목록
+      description: 이 빌라의 칸에 걸린 공유 조건(DB `share_offers`)입니다. 칸 하나에 기간별로 여러 개를 둘 수 있습니다.
+      operationId: listAdminShareOffers
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
       responses:
         "200":
           description: 공유 조건 목록
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/ShareOfferRead" }
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ShareOffer" }
               example:
-                - id: 1
-                  slot_id: 3
-                  host_id: 2
-                  start_date: "2026-10-01"
-                  end_date: "2026-12-31"
-                  available_weekdays: [0, 1, 2, 3, 4]
-                  start_hour: 9
-                  end_hour: 18
-                  hourly_price: 3
-                  max_hours: 4
-                  memo: 평일 낮에 비어 있어요
-                  is_public: true
-                  created_at: "2026-09-30T10:00:00Z"
-        "422": { $ref: "#/components/responses/ValidationError" }
+                items:
+                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
     post:
-      tags: [share-offers]
-      summary: 공유 조건 등록
+      tags: [admin]
+      summary: 🛠 차고지 등록 = 칸 공유 조건 등록 (#20)
       description: |
-        관리인이 칸을 기간·요일·시간·시간당 토큰으로 공유합니다 (차고지 등록 n45).
-        칸 하나에 기간별로 여러 개 만들 수 있고, `is_public` 이 `false` 면 공유 중단 상태입니다.
-        `hourly_price` 가 0 이면 무료, `max_hours` 가 null 이면 이용 시간 제한이 없습니다.
-      operationId: createShareOffer
+        화면 이름은 "차고지 등록" 이지만 DB 에서는 **칸 하나에 공유 조건을 거는 것**(`share_offers`)입니다. 차고지 자체(`garages`)는 운영팀이 미리 등록합니다.
+        - 칸을 여러 개 공유하려면 **칸마다 한 번씩** 호출합니다
+        - `host` 는 호출한 관리인이며, 수락된 요청의 토큰을 받습니다
+        - 와이어프레임 입력 중 가용 시간(시작·종료, 정시 단위), 요일, 시간당 요금(0이면 무료), 최대 이용 시간(제한 없음 = `null`), 메모, 공개 여부를 받습니다. 이름·상세 위치 안내는 DB 에 없어 받지 않습니다 (열린 질문 #12)
+        - 비활성(`is_active=false`) 칸이나 다른 빌라의 칸이면 400
+      operationId: createAdminShareOffer
+      x-priority: 2주차
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/ShareOfferCreate" }
-            example:
-              slot_id: 3
-              host_id: 2
-              start_date: "2026-10-01"
-              end_date: "2026-12-31"
-              available_weekdays: [0, 1, 2, 3, 4]
-              start_hour: 9
-              end_hour: 18
-              hourly_price: 3
-              max_hours: 4
-              memo: 평일 낮에 비어 있어요
-              is_public: true
       responses:
         "201":
-          description: 생성됨
+          description: 등록됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ShareOfferRead" }
-              example:
-                id: 1
-                slot_id: 3
-                host_id: 2
-                start_date: "2026-10-01"
-                end_date: "2026-12-31"
-                available_weekdays: [0, 1, 2, 3, 4]
-                start_hour: 9
-                end_hour: 18
-                hourly_price: 3
-                max_hours: 4
-                memo: 평일 낮에 비어 있어요
-                is_public: true
-                created_at: "2026-09-30T10:00:00Z"
-        "409":
-          description: 제약 위반
+              schema: { $ref: "#/components/schemas/ShareOffer" }
+        "400":
+          description: 검증 실패 (비활성 칸·다른 빌라 칸·시간 범위 오류 등)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                badDates: { value: { detail: 공유 시작일은 종료일보다 늦을 수 없습니다. } }
-                badHours: { value: { detail: 공유 시간은 0~24시 사이, 시작 시가 종료 시보다 앞서야 합니다. } }
-                badMaxHours: { value: { detail: 최대 이용 시간은 0보다 커야 합니다. } }
-                refMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /share-offers/{offer_id}:
-    get:
-      tags: [share-offers]
-      summary: 공유 조건 상세
-      operationId: getShareOffer
-      parameters:
-        - { $ref: "#/components/parameters/OfferId" }
+              example: { error: { code: INVALID_INPUT, message: 사용 중지된 칸은 공유할 수 없습니다., detail: { slot_id: 1005 } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+  /admin/share-offers/{offer_id}:
+    parameters:
+      - { $ref: "#/components/parameters/OfferId" }
+    patch:
+      tags: [admin]
+      summary: 🛠 공유 조건 수정
+      description: "`is_public=false` 로 바꾸면 공유를 중단합니다. 가격을 바꿔도 이미 들어온 요청의 `total_price` 는 그대로입니다."
+      operationId: updateAdminShareOffer
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShareOfferUpdate" }
+            example: { hourly_price: 3, is_public: false }
       responses:
         "200":
-          description: 공유 조건
+          description: 수정됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ShareOfferRead" }
-              example:
-                id: 1
-                slot_id: 3
-                host_id: 2
-                start_date: "2026-10-01"
-                end_date: "2026-12-31"
-                available_weekdays: [0, 1, 2, 3, 4]
-                start_hour: 9
-                end_hour: 18
-                hourly_price: 3
-                max_hours: 4
-                memo: 평일 낮에 비어 있어요
-                is_public: true
-                created_at: "2026-09-30T10:00:00Z"
+              schema: { $ref: "#/components/schemas/ShareOffer" }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-
-  /share-requests:
-    get:
-      tags: [share-requests]
-      summary: 공유 요청 목록
-      operationId: listShareRequests
-      parameters:
-        - name: status
-          in: query
-          required: false
-          description: 상태로 필터
-          schema: { $ref: "#/components/schemas/ShareRequestStatus" }
-          example: pending
+    delete:
+      tags: [admin]
+      summary: 🛠 공유 조건 삭제
+      description: 이 조건에 딸린 공유 요청도 함께 지워집니다 (DB `ON DELETE CASCADE`). 기록을 남기려면 삭제 대신 `is_public=false` 를 쓰세요.
+      operationId: deleteAdminShareOffer
+      x-priority: 2주차
       responses:
-        "200":
-          description: 공유 요청 목록
+        "204": { description: 삭제됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/buildings/{building_id}/unknown-vehicles:
+    post:
+      tags: [admin]
+      summary: 🛠 미확인 차량 등록 (향후)
+      description: |
+        앱 미가입 차량을 관리인이 번호판만 등록합니다. 배치도·추천에서 `occupant_type=UNKNOWN` 이고 출차 시간이 없어 막힘 위험으로 계산합니다.
+        이동 요청은 불가합니다 ("앱으로 연락 불가").
+      operationId: createUnknownVehicle
+      x-priority: 향후
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slot_id, plate]
+              properties:
+                slot_id: { type: integer }
+                plate: { type: string }
+                memo: { type: [string, "null"] }
+            example: { slot_id: 1006, plate: 45다6789, memo: 앱 미가입 }
+      responses:
+        "201":
+          description: 등록됨
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/ShareRequestRead" }
-              example:
-                - id: 1
-                  offer_id: 1
-                  slot_id: 3
-                  requester_id: 1
-                  vehicle_id: 1
-                  request_date: "2026-10-05"
-                  start_hour: 10
-                  end_hour: 13
-                  total_price: 9
-                  status: pending
-                  reject_reason: null
-                  created_at: "2026-10-01T09:00:00Z"
-                  responded_at: null
-                - id: 2
-                  offer_id: 1
-                  slot_id: 3
-                  requester_id: 1
-                  vehicle_id: 1
-                  request_date: "2026-10-06"
-                  start_hour: 14
-                  end_hour: 16
-                  total_price: 6
-                  status: accepted
-                  reject_reason: null
-                  created_at: "2026-10-01T09:05:00Z"
-                  responded_at: "2026-10-01T09:30:00Z"
-                - id: 3
-                  offer_id: 1
-                  slot_id: 3
-                  requester_id: 1
-                  vehicle_id: null
-                  request_date: "2026-10-07"
-                  start_hour: 9
-                  end_hour: 11
-                  total_price: 6
-                  status: rejected
-                  reject_reason: 그 시간에는 제가 사용해요
-                  created_at: "2026-10-01T09:10:00Z"
-                  responded_at: "2026-10-01T09:40:00Z"
-        "422": { $ref: "#/components/responses/ValidationError" }
-    post:
-      tags: [share-requests]
-      summary: 공유 요청 생성
-      description: |
-        입주민이 옆 빌라 골목 공유 칸을 시간제로 요청합니다 (화면 4 상단).
-
-        서버가 검증하는 규칙 (모두 409):
-        - 공유 조건이 공개 중일 것
-        - `request_date` 가 공유 기간 안이고 허용 요일일 것
-        - `start_hour`/`end_hour` 가 공유 시간대 안이고, 이용 시간이 `max_hours` 이하일 것
-        - 요청자가 공유 조건의 host 가 아닐 것
-        - 요청자의 토큰 잔액이 `total_price` 이상일 것 (실제 차감은 **수락할 때**)
-
-        `total_price` 는 `(end_hour - start_hour) × hourly_price` 로 서버가 계산해 고정하고, `slot_id` 는 공유 조건에서 가져옵니다.
-      operationId: createShareRequest
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/ShareRequestCreate" }
-            example:
-              offer_id: 1
-              requester_id: 1
-              vehicle_id: 1
-              request_date: "2026-10-05"
-              start_hour: 10
-              end_hour: 13
-      responses:
-        "201":
-          description: 생성됨 (`status` 는 항상 `pending`)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ShareRequestRead" }
-              example:
-                id: 1
-                offer_id: 1
-                slot_id: 3
-                requester_id: 1
-                vehicle_id: 1
-                request_date: "2026-10-05"
-                start_hour: 10
-                end_hour: 13
-                total_price: 9
-                status: pending
-                reject_reason: null
-                created_at: "2026-10-01T09:00:00Z"
-                responded_at: null
-        "404":
-          description: 공유 조건 없음
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              example: { detail: Share offer not found }
+                type: object
+                properties:
+                  parking_id: { type: integer }
+                  vehicle_id: { type: integer }
+                  occupant_type: { $ref: "#/components/schemas/OccupantType" }
+              example: { parking_id: 559, vehicle_id: 31, occupant_type: UNKNOWN }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
         "409":
-          description: 공유 조건 위반 / 잔액 부족 / DB 제약 위반
+          description: 사용 중인 칸
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                notPublic: { value: { detail: Share offer is not public } }
-                outsideDate: { value: { detail: Requested date is outside the share offer } }
-                outsideHours: { value: { detail: Requested hours are outside the share offer } }
-                exceedMaxHours: { value: { detail: Requested hours exceed max_hours } }
-                ownOffer: { value: { detail: Cannot request own share offer } }
-                notEnoughTokens: { value: { detail: Not enough tokens } }
-                refMissing: { value: { detail: 참조한 데이터가 존재하지 않습니다. } }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /share-requests/{request_id}/decision:
-    post:
-      tags: [share-requests]
-      summary: 공유 요청 수락/거절
-      description: |
-        관리자가 수락/거절합니다 (화면 4: 거절 / 수락 버튼). `pending` 인 요청만 처리할 수 있습니다.
+              example: { error: { code: SLOT_OCCUPIED, message: 이미 다른 차량이 주차 중인 칸입니다., detail: null } }
 
-        **수락**하면 요청자의 토큰 `total_price` 가 공유 조건의 host 에게 넘어가고 `token_transfers` 에 기록됩니다.
-        - 같은 칸에 이미 수락된 시간과 겹치면 409 (토큰은 이동하지 않음)
-        - 요청자 잔액이 그 사이 부족해졌으면 409 `Not enough tokens`
-        - 요청 행을 잠그고 처리하므로 동시에 두 번 수락해도 토큰은 한 번만 이동합니다
-      operationId: decideShareRequest
+  # ───────────────────────── 알림 ─────────────────────────
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: 👤 알림 목록
+      description: "`link` 로 FE 가 해당 화면(이동 요청 수신 #12, 요청 결과 #15 등)으로 이동합니다."
+      operationId: listNotifications
+      x-priority: 1주차
       parameters:
-        - { $ref: "#/components/parameters/RequestId" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/ShareRequestDecision" }
-            examples:
-              accept:
-                summary: 수락
-                value: { status: accepted }
-              reject:
-                summary: 거절
-                value: { status: rejected, reject_reason: 그 시간에는 제가 사용해요 }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
       responses:
         "200":
-          description: 처리됨
+          description: 알림 목록
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ShareRequestRead" }
-              examples:
-                accepted:
-                  summary: 수락 결과
-                  value:
-                    id: 2
-                    offer_id: 1
-                    slot_id: 3
-                    requester_id: 1
-                    vehicle_id: 1
-                    request_date: "2026-10-06"
-                    start_hour: 14
-                    end_hour: 16
-                    total_price: 6
-                    status: accepted
-                    reject_reason: null
-                    created_at: "2026-10-01T09:05:00Z"
-                    responded_at: "2026-10-01T09:30:00Z"
-                rejected:
-                  summary: 거절 결과
-                  value:
-                    id: 3
-                    offer_id: 1
-                    slot_id: 3
-                    requester_id: 1
-                    vehicle_id: null
-                    request_date: "2026-10-07"
-                    start_hour: 9
-                    end_hour: 11
-                    total_price: 6
-                    status: rejected
-                    reject_reason: 그 시간에는 제가 사용해요
-                    created_at: "2026-10-01T09:10:00Z"
-                    responded_at: "2026-10-01T09:40:00Z"
-        "404":
-          description: 요청 또는 (토큰 이동 시) 주민 없음
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                requestMissing: { value: { detail: Share request not found } }
-                residentMissing: { value: { detail: Resident not found } }
-        "409":
-          description: 이미 처리됨 / 시간 겹침 / 잔액 부족
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              examples:
-                alreadyDecided: { value: { detail: Already decided } }
-                overlap: { value: { detail: 같은 칸에 이미 수락된 공유 시간과 겹칩니다. } }
-                notEnoughTokens: { value: { detail: Not enough tokens } }
-        "422": { $ref: "#/components/responses/ValidationError" }
+              schema: { $ref: "#/components/schemas/NotificationPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /notifications/{notification_id}/read:
+    post:
+      tags: [notifications]
+      summary: 👤 알림 읽음 처리 (홈 "확인" 버튼)
+      operationId: readNotification
+      x-priority: 1주차
+      parameters:
+        - { name: notification_id, in: path, required: true, schema: { type: integer }, example: 91 }
+      responses:
+        "204": { description: 읽음 처리됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /notifications/read-all:
+    post:
+      tags: [notifications]
+      summary: 👤 전체 읽음 처리
+      operationId: readAllNotifications
+      x-priority: 1주차
+      responses:
+        "204": { description: 모두 읽음 처리됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /me/push-subscriptions:
+    post:
+      tags: [notifications]
+      summary: 👤 Web Push 구독
+      operationId: createPushSubscription
+      x-priority: 2주차
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint: { type: string, format: uri }
+                keys:
+                  type: object
+                  properties:
+                    p256dh: { type: string }
+                    auth: { type: string }
+            example:
+              endpoint: https://fcm.googleapis.com/fcm/send/abc123
+              keys: { p256dh: BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA, auth: tBHItJI5svbpez7KI4CCXg }
+      responses:
+        "201": { description: 구독됨 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /health:
     get:
       tags: [health]
-      summary: 상태 확인
-      description: "주의: 다른 API 와 달리 `/api/v1` 접두사가 붙지 않는 `/health` 입니다."
+      summary: 🔓 상태 확인
+      description: "`/api/v1` 접두사가 붙지 않는 `/health` 입니다."
       operationId: health
+      security: []
       servers:
         - url: http://localhost:8000
       responses:
@@ -738,228 +1420,833 @@ paths:
               example: { status: ok }
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   parameters:
-    AlleyId:
-      { name: alley_id, in: path, required: true, schema: { type: integer }, example: 1 }
-    BuildingId:
-      { name: building_id, in: path, required: true, schema: { type: integer }, example: 1 }
-    SlotId:
-      { name: slot_id, in: path, required: true, schema: { type: integer }, example: 3 }
-    VehicleId:
-      { name: vehicle_id, in: path, required: true, schema: { type: integer }, example: 1 }
-    ScheduleId:
-      { name: schedule_id, in: path, required: true, schema: { type: integer }, example: 1 }
-    OfferId:
-      { name: offer_id, in: path, required: true, schema: { type: integer }, example: 1 }
-    RequestId:
-      { name: request_id, in: path, required: true, schema: { type: integer }, example: 1 }
+    BuildingId: { name: building_id, in: path, required: true, schema: { type: integer }, example: 3 }
+    VehicleId: { name: vehicle_id, in: path, required: true, schema: { type: integer }, example: 7 }
+    ParkingId: { name: parking_id, in: path, required: true, schema: { type: integer }, example: 556 }
+    MoveRequestId: { name: move_request_id, in: path, required: true, schema: { type: integer }, example: 44 }
+    GarageId: { name: garage_id, in: path, required: true, schema: { type: integer }, example: 21 }
+    ShareRequestId: { name: share_request_id, in: path, required: true, schema: { type: integer }, example: 301 }
+    OfferId: { name: offer_id, in: path, required: true, schema: { type: integer }, example: 401 }
+    Cursor: { name: cursor, in: query, required: false, description: 이전 응답의 next_cursor, schema: { type: string } }
+    Limit: { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
 
   responses:
+    InvalidInput:
+      description: 검증 실패
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: INVALID_INPUT, message: 입력값이 올바르지 않습니다., detail: { field: agree_terms, reason: 이용약관에 동의해야 합니다. } } }
+    Unauthorized:
+      description: 토큰 없음·만료
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: UNAUTHORIZED, message: 로그인이 필요합니다., detail: null } }
+    NotBuildingMember:
+      description: 해당 빌라 입주민이 아님
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: NOT_BUILDING_MEMBER, message: 이 빌라의 입주민만 이용할 수 있습니다., detail: null } }
+    NotBuildingAdmin:
+      description: 해당 빌라 관리인이 아님
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: NOT_BUILDING_ADMIN, message: 이 빌라의 관리인만 이용할 수 있습니다., detail: null } }
     NotFound:
       description: 대상을 찾을 수 없음
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
-          example: { detail: Resource not found }
-    ValidationError:
-      description: 요청 형식 오류 (FastAPI/Pydantic 검증 실패)
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/HTTPValidationError" }
-          example:
-            detail:
-              - { type: missing, loc: [body, name], msg: Field required, input: {} }
+          example: { error: { code: NOT_FOUND, message: 대상을 찾을 수 없습니다., detail: null } }
 
   schemas:
+    # ── 공통 ──
     Error:
       type: object
-      description: 도메인 예외(404/403/409/400)와 DB 제약 위반(409)의 공통 본문
-      required: [detail]
+      required: [error]
       properties:
-        detail: { type: string }
-    HTTPValidationError:
-      type: object
-      properties:
-        detail:
-          type: array
-          items: { $ref: "#/components/schemas/ValidationErrorItem" }
-    ValidationErrorItem:
-      type: object
-      required: [loc, msg, type]
-      properties:
-        loc:
-          type: array
-          items: { type: [string, integer] }
-        msg: { type: string }
-        type: { type: string }
-        input: {}
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            detail: { type: [object, "null"], additionalProperties: true }
+    ErrorCode:
+      type: string
+      description: |
+        400 `INVALID_INPUT` · 401 `UNAUTHORIZED` `INVALID_CREDENTIALS` · 403 `NOT_BUILDING_MEMBER` `NOT_BUILDING_ADMIN` ·
+        404 `NOT_FOUND` `INVALID_INVITE_CODE` · 409 `EMAIL_EXISTS` `SLOT_OCCUPIED` `SLOT_UNAVAILABLE` `VEHICLE_ALREADY_PARKED` `GARAGE_TIME_CONFLICT`.
+        **제안(v0.2 미정의)**: `PLATE_EXISTS` `ALREADY_DECIDED` `MOVE_REQUEST_ALREADY_PENDING` `ALREADY_IN_BUILDING` `INSUFFICIENT_TOKENS` (모두 409)
+      enum:
+        - INVALID_INPUT
+        - UNAUTHORIZED
+        - INVALID_CREDENTIALS
+        - NOT_BUILDING_MEMBER
+        - NOT_BUILDING_ADMIN
+        - NOT_FOUND
+        - INVALID_INVITE_CODE
+        - EMAIL_EXISTS
+        - SLOT_OCCUPIED
+        - SLOT_UNAVAILABLE
+        - VEHICLE_ALREADY_PARKED
+        - GARAGE_TIME_CONFLICT
+        - PLATE_EXISTS
+        - ALREADY_DECIDED
+        - MOVE_REQUEST_ALREADY_PENDING
+        - ALREADY_IN_BUILDING
+        - INSUFFICIENT_TOKENS
+    Weekday:
+      type: string
+      enum: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    TimeOfDay:
+      type: string
+      pattern: '^\d{2}:\d{2}$'
+      description: 시각만 표기 ("07:30")
 
-    Weekdays:
-      type: array
-      description: 요일 목록. 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일
-      items: { type: integer, minimum: 0, maximum: 6 }
-
-    AlleyCreate:
+    # ── Enum ──
+    BuildingRole: { type: string, enum: [RESIDENT, ADMIN], description: "입주민 / 관리인. DB 는 residents.role 의 RESIDENT / MANAGER" }
+    GarageType:
+      type: string
+      enum: [PILOTI_IN, PILOTI_OUT, ROADSIDE]
+      description: 필로티 내부 / 필로티 외부·건물 앞 / 골목 노상 (DB garage_type)
+    Hour: { type: integer, minimum: 0, maximum: 24, description: "정시 단위 시각. 24 = 자정" }
+    AlleyRef:
       type: object
-      required: [name]
+      description: 골목. 최상위 운영 단위로 같은 골목의 빌라끼리 차고지를 공유
       properties:
-        name: { type: string, description: 골목 이름, examples: [광운로19가길] }
-        description: { type: [string, "null"], default: null }
-    AlleyRead:
+        id: { type: integer }
+        name: { type: string }
+    OnboardingStep: { type: string, enum: [JOIN_BUILDING, REGISTER_VEHICLE, DONE] }
+    SlotState:
+      type: string
+      enum: [EMPTY, SOON_EXIT, OCCUPIED, UNAVAILABLE]
+      description: 배치도 표시 (EMPTY 빈칸 · SOON_EXIT 곧 출차 · OCCUPIED 사용 중 · UNAVAILABLE 사용 불가)
+    SlotTag: { type: string, enum: [RECOMMENDED, EMPTY, UNAVAILABLE] }
+    OccupantType:
+      type: string
+      enum: [RESIDENT, EXTERNAL, UNKNOWN]
+      description: 입주민 차량 / 외부·공유 이용자 / 미확인
+    ExitSource:
+      type: string
+      enum: [MANUAL, RECURRING, AI_ESTIMATED, NONE]
+      description: 직접 / 반복 / AI 추정(향후) / 없음(상시 주차 등)
+    ParkingState: { type: string, enum: [PARKED, EXITED], description: "Notion Enum 표에 없어 Mock 에서 정의" }
+    VehicleStatus: { type: string, enum: [PARKED, OUT], description: "PARKED 주차 중 / OUT 외부 출차. Notion Enum 표에 없어 Mock 에서 정의" }
+    MoveRequestStatus: { type: string, enum: [PENDING, DONE, EXPIRED, CANCELED] }
+    GarageAvailability: { type: string, enum: [AVAILABLE, SOON_EXIT, RESERVABLE, UNAVAILABLE] }
+    GarageSlotState: { type: string, enum: [AVAILABLE, SOON_EXIT, IN_USE], description: "차고지 상세(#14) 칸 상태. Notion Enum 표에 없어 Mock 에서 정의" }
+    ShareRequestStatus: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED, COMPLETED] }
+    NotificationType:
+      type: string
+      enum: [BLOCK_ALERT, MOVE_REQUEST, EXIT_DONE, NIGHT_BEFORE, SHARE_REQUEST, SHARE_RESULT]
+    VehicleColor: { type: string, enum: [검정, 흰색, 은색, 회색, 파랑, 빨강, 기타] }
+
+    # ── 인증 · 사용자 ──
+    SignupRequest:
+      type: object
+      required: [email, password, nickname, agree_terms]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+        nickname: { type: string }
+        agree_terms: { type: boolean }
+      example: { email: kim@kw.ac.kr, password: "********", nickname: 지수, agree_terms: true }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+      example: { email: kim@kw.ac.kr, password: "********" }
+    AuthTokens:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            nickname: { type: string }
+            onboarding_step: { $ref: "#/components/schemas/OnboardingStep" }
+      example:
+        access_token: eyJhbGciOiJIUzI1NiJ9.access
+        refresh_token: eyJhbGciOiJIUzI1NiJ9.refresh
+        user: { id: 1, nickname: 지수, onboarding_step: JOIN_BUILDING }
+    UserMe:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        nickname: { type: string }
+        name: { type: [string, "null"] }
+        phone: { type: [string, "null"], description: 본인에게도 마스킹 }
+        temperature: { type: number, description: "차곡이 온도(매너 온도). 기본 36.5" }
+        token_balance: { type: integer, minimum: 0, description: 보유 토큰. 공유 이용료는 토큰으로만 주고받음 }
+        onboarding_step: { $ref: "#/components/schemas/OnboardingStep" }
+        building:
+          type: [object, "null"]
+          description: 소속 빌라. **한 사용자는 한 빌라에만 소속**되므로 배열이 아니라 단일 객체. 합류 전이면 null
+          properties:
+            building_id: { type: integer }
+            name: { type: string }
+            alley: { $ref: "#/components/schemas/AlleyRef" }
+            role: { $ref: "#/components/schemas/BuildingRole" }
+            unit: { type: [string, "null"] }
+      example:
+        id: 1
+        email: kim@kw.ac.kr
+        nickname: 지수
+        name: 김지수
+        phone: 010-****-5678
+        temperature: 36.5
+        token_balance: 30
+        onboarding_step: DONE
+        building: { building_id: 3, name: 월계 한빛빌라, alley: { id: 1, name: 광운로19가길 }, role: RESIDENT, unit: 101동 202호 }
+    ProfileUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        unit: { type: string }
+        phone: { type: string }
+      example: { name: 김지수, unit: 101동 202호, phone: 010-1234-5678 }
+    NotificationSettings:
+      type: object
+      properties:
+        block_alert: { type: boolean }
+        move_request: { type: boolean }
+        night_before: { type: boolean }
+        share: { type: boolean }
+        quiet_hours:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            from: { $ref: "#/components/schemas/TimeOfDay" }
+            to: { $ref: "#/components/schemas/TimeOfDay" }
+      example:
+        block_alert: true
+        move_request: true
+        night_before: true
+        share: true
+        quiet_hours: { enabled: true, from: "23:00", to: "06:00" }
+
+    # ── 배치도 · 현황 · 홈 ──
+    BuildingLayout:
+      type: object
+      description: 골목 > 빌라 > 차고지 > 칸 (DB 계층 그대로)
+      properties:
+        building_id: { type: integer }
+        name: { type: string }
+        alley: { $ref: "#/components/schemas/AlleyRef" }
+        garages:
+          type: array
+          description: sort_order 순
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string, description: 빌라 안에서 유일 }
+              garage_type: { $ref: "#/components/schemas/GarageType" }
+              sort_order: { type: integer }
+              slots:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    number: { type: integer, minimum: 1, description: 차고지 안 번호 (차고지 안에서 유일) }
+                    label: { type: string, description: 차고지 이름 + 번호 }
+                    front_slot_id: { type: [integer, "null"], description: 이 칸 바로 앞(출구 쪽) 칸. 없으면 null }
+                    is_active: { type: boolean, description: false 면 사용 불가 칸 }
+                    rect:
+                      type: [object, "null"]
+                      description: 건물 기준 로컬 좌표(미터). DB render_x0..y1
+                      properties:
+                        x0: { type: number }
+                        y0: { type: number }
+                        x1: { type: number }
+                        y1: { type: number }
+      example:
+        building_id: 3
+        name: 월계 한빛빌라
+        alley: { id: 1, name: 광운로19가길 }
+        garages:
+          - id: 10
+            name: 필로티 안쪽
+            garage_type: PILOTI_IN
+            sort_order: 0
+            slots:
+              - { id: 1001, number: 1, label: 필로티 안쪽 1번, front_slot_id: 1002, is_active: true, rect: { x0: 4.0, y0: 0.0, x1: 6.5, y1: 5.0 } }
+              - { id: 1002, number: 2, label: 필로티 안쪽 2번, front_slot_id: null, is_active: true, rect: { x0: 4.0, y0: 5.0, x1: 6.5, y1: 10.0 } }
+          - id: 11
+            name: 필로티 외부
+            garage_type: PILOTI_OUT
+            sort_order: 1
+            slots:
+              - { id: 1003, number: 1, label: 필로티 외부 1번, front_slot_id: null, is_active: true, rect: { x0: 7.0, y0: 0.0, x1: 9.5, y1: 5.0 } }
+          - id: 12
+            name: 건물 앞
+            garage_type: PILOTI_OUT
+            sort_order: 2
+            slots:
+              - { id: 1004, number: 1, label: 건물 앞 1번, front_slot_id: 1005, is_active: true, rect: { x0: 0.0, y0: 11.0, x1: 2.5, y1: 16.0 } }
+              - { id: 1005, number: 2, label: 건물 앞 2번, front_slot_id: null, is_active: false, rect: { x0: 0.0, y0: 16.0, x1: 2.5, y1: 21.0 } }
+              - { id: 1006, number: 3, label: 건물 앞 3번, front_slot_id: null, is_active: true, rect: { x0: 3.0, y0: 11.0, x1: 5.5, y1: 16.0 } }
+          - id: 13
+            name: 골목
+            garage_type: ROADSIDE
+            sort_order: 3
+            slots:
+              - { id: 1007, number: 1, label: 골목 1번, front_slot_id: 1008, is_active: true, rect: { x0: 10.0, y0: 11.0, x1: 12.5, y1: 16.0 } }
+              - { id: 1008, number: 2, label: 골목 2번, front_slot_id: null, is_active: true, rect: { x0: 10.0, y0: 16.0, x1: 12.5, y1: 21.0 } }
+    SlotStatus:
+      type: object
+      properties:
+        slot_id: { type: integer }
+        state: { $ref: "#/components/schemas/SlotState" }
+        parking:
+          type: [object, "null"]
+          properties:
+            id: { type: integer }
+            is_mine: { type: boolean }
+            plate: { type: string }
+            occupant_type: { $ref: "#/components/schemas/OccupantType" }
+            expected_exit_at: { type: [string, "null"], format: date-time }
+            exit_source: { $ref: "#/components/schemas/ExitSource" }
+        blocked_by: { type: array, items: { type: integer }, description: 이 칸의 차를 막고 있는 칸 }
+        blocking: { type: array, items: { type: integer }, description: 이 칸의 차가 막고 있는 칸 }
+    BuildingStatus:
+      type: object
+      properties:
+        updated_at: { type: string, format: date-time }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/SlotStatus" }
+      example:
+        updated_at: "2026-09-30T14:40:00+09:00"
+        slots:
+          - { slot_id: 1001, state: OCCUPIED, parking: { id: 556, is_mine: true, plate: 12가 3456, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL }, blocked_by: [1002], blocking: [] }
+          - { slot_id: 1002, state: OCCUPIED, parking: { id: 555, is_mine: false, plate: 34나 5678, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T21:00:00+09:00", exit_source: MANUAL }, blocked_by: [], blocking: [1001] }
+          - { slot_id: 1003, state: OCCUPIED, parking: { id: 558, is_mine: false, plate: 123가 4634, occupant_type: EXTERNAL, expected_exit_at: "2026-09-30T17:00:00+09:00", exit_source: NONE }, blocked_by: [], blocking: [] }
+          - { slot_id: 1004, state: SOON_EXIT, parking: { id: 557, is_mine: false, plate: 27가 4821, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T15:10:00+09:00", exit_source: RECURRING }, blocked_by: [], blocking: [] }
+          - { slot_id: 1005, state: UNAVAILABLE, parking: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1006, state: OCCUPIED, parking: { id: 559, is_mine: false, plate: 45다 6789, occupant_type: UNKNOWN, expected_exit_at: null, exit_source: NONE }, blocked_by: [], blocking: [] }
+          - { slot_id: 1007, state: EMPTY, parking: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1008, state: EMPTY, parking: null, blocked_by: [], blocking: [] }
+    Home:
+      type: object
+      properties:
+        building:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            role: { $ref: "#/components/schemas/BuildingRole" }
+        unread_notification_count: { type: integer }
+        summary:
+          type: object
+          properties:
+            available: { type: integer, description: 가능 = 빈칸 + 1시간 내 비는 칸 }
+            soon_exit: { type: integer }
+            blocked: { type: integer }
+            empty: { type: integer }
+        my_parking:
+          type: [object, "null"]
+          properties:
+            parking_id: { type: integer }
+            vehicle:
+              type: object
+              properties:
+                id: { type: integer }
+                plate: { type: string }
+                color: { type: [string, "null"] }
+            slot_label: { type: string }
+            state: { $ref: "#/components/schemas/ParkingState" }
+            expected_exit_at: { type: [string, "null"], format: date-time }
+        block_alert:
+          type: [object, "null"]
+          properties:
+            blocking_parking_id: { type: integer }
+            message: { type: string }
+        admin:
+          type: [object, "null"]
+          description: 관리인일 때만 포함
+          properties:
+            pending_share_requests: { type: integer }
+        recent_notifications:
+          type: array
+          items: { $ref: "#/components/schemas/NotificationItem" }
+      example:
+        building: { id: 3, name: 월계 한빛빌라, role: RESIDENT }
+        unread_notification_count: 2
+        summary: { available: 3, soon_exit: 1, blocked: 1, empty: 2 }
+        my_parking:
+          parking_id: 556
+          vehicle: { id: 7, plate: 12가 3456, color: 흰색 }
+          slot_label: 필로티 안쪽 1번
+          state: PARKED
+          expected_exit_at: "2026-09-30T18:30:00+09:00"
+        block_alert: { blocking_parking_id: 555, message: 내 차량이 302호 차량에 의해 막혀 있습니다. }
+        admin: null
+        recent_notifications:
+          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 201호 김민준, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: false, created_at: "2026-09-30T14:30:00+09:00" }
+
+    # ── 차량 ──
+    VehicleListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        plate: { type: string }
+        alias: { type: [string, "null"] }
+        color: { oneOf: [{ $ref: "#/components/schemas/VehicleColor" }, { type: "null" }] }
+        is_default: { type: boolean }
+        status: { $ref: "#/components/schemas/VehicleStatus" }
+        status_text: { type: string }
+    VehicleCreate:
+      type: object
+      required: [plate]
+      properties:
+        plate: { type: string, examples: ["12가3456"] }
+        color: { $ref: "#/components/schemas/VehicleColor" }
+        alias: { type: string }
+        is_default: { type: boolean, default: false }
+    VehicleUpdate:
+      type: object
+      properties:
+        plate: { type: string }
+        alias: { type: string }
+        is_default: { type: boolean }
+    VehicleDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        plate: { type: string }
+        color: { type: [string, "null"] }
+        owner: { type: object, properties: { name: { type: string }, unit: { type: string } } }
+        parking:
+          type: [object, "null"]
+          properties:
+            parking_id: { type: integer }
+            slot_id: { type: integer }
+            slot_label: { type: string }
+            entered_at: { type: string, format: date-time }
+            state: { $ref: "#/components/schemas/ParkingState" }
+        schedule:
+          type: [object, "null"]
+          properties:
+            expected_exit_at: { type: [string, "null"], format: date-time }
+            exit_source: { $ref: "#/components/schemas/ExitSource" }
+            elapsed_minutes: { type: integer, description: 입차 후 경과 시간(분) }
+    RecurringSchedule:
+      type: object
+      required: [days, time]
+      properties:
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/Weekday" }
+        time: { $ref: "#/components/schemas/TimeOfDay" }
+        memo: { type: [string, "null"] }
+      example: { days: [MON, TUE, WED, THU, FRI], time: "07:30", memo: 출근 일정 }
+
+    # ── 주차 배치 ──
+    SlotRecommendation:
+      type: object
+      properties:
+        slot_id: { type: integer }
+        tag: { $ref: "#/components/schemas/SlotTag" }
+        label: { type: string }
+        reason: { type: string }
+        will_block: { type: array, items: { type: integer }, description: 이 칸에 두면 막게 되는 칸 }
+        unavailable_reason: { type: string }
+    ParkingCreate:
+      type: object
+      required: [slot_id, vehicle_id]
+      properties:
+        slot_id: { type: integer }
+        vehicle_id: { type: integer }
+        is_long_term: { type: boolean, default: false, description: 상시 주차 }
+        expected_exit_at: { type: string, format: date-time }
+        repeat_weekdays:
+          type: boolean
+          default: false
+          description: "평일(월~금) 반복 등록 여부. ⚠️ 이름은 복수형이지만 boolean (요일 직접 선택은 #9 API)"
+        memo: { type: string }
+    ParkingCreated:
+      type: object
+      properties:
+        id: { type: integer }
+        slot_id: { type: integer }
+        state: { $ref: "#/components/schemas/ParkingState" }
+        expected_exit_at: { type: [string, "null"], format: date-time }
+        exit_source: { $ref: "#/components/schemas/ExitSource" }
+        blocking: { type: array, items: { type: integer }, description: 이 배치로 막게 되는 칸 }
+
+    # ── 이동 요청 ──
+    MoveRequestDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { $ref: "#/components/schemas/MoveRequestStatus" }
+        is_urgent: { type: boolean }
+        requested_at: { type: string, format: date-time }
+        requester: { type: object, properties: { label: { type: string } } }
+        my_vehicle:
+          type: object
+          properties:
+            plate: { type: string }
+            slot_label: { type: string }
+            parked_at: { type: string, format: date-time }
+        blocked_vehicle:
+          type: object
+          properties:
+            plate: { type: string }
+            slot_label: { type: string }
+            needed_at: { type: string, format: date-time }
+        reason: { type: [string, "null"] }
+      example:
+        id: 44
+        status: PENDING
+        is_urgent: true
+        requested_at: "2026-09-30T14:34:00+09:00"
+        requester: { label: 101동 입주민 }
+        my_vehicle: { plate: 34나 5678, slot_label: 필로티 안쪽 2번, parked_at: "2026-09-30T12:10:00+09:00" }
+        blocked_vehicle: { plate: 12가 3456, slot_label: 필로티 안쪽 1번, needed_at: "2026-09-30T15:00:00+09:00" }
+        reason: 외출 예정으로 출차가 필요합니다. 차량 이동을 부탁드립니다.
+
+    # ── 공유 주차 (이용자) ──
+    GarageListItem:
+      type: object
+      properties:
+        garage_id: { type: integer }
+        name: { type: string }
+        garage_type: { $ref: "#/components/schemas/GarageType" }
+        building: { type: object, properties: { id: { type: integer }, name: { type: string } } }
+        title: { type: string, description: 목록 표시용 (빌라 이름 + 차고지 이름) }
+        availability: { $ref: "#/components/schemas/GarageAvailability" }
+        shared_slot_count: { type: integer, description: 공개된 공유 조건이 있는 칸 수 }
+        min_hourly_price: { type: integer, description: "시간당 토큰 중 가장 싼 값. 0 = 무료" }
+        info: { type: [string, "null"], description: 목록 보조 문구 }
+        estimated_free_at: { type: [string, "null"], format: date-time }
+        estimate_source: { oneOf: [{ $ref: "#/components/schemas/ExitSource" }, { type: "null" }] }
+        available_from: { type: [string, "null"], format: date-time }
+        max_hours: { type: [integer, "null"] }
+        weekdays_only: { type: boolean }
+    GarageListPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/GarageListItem" }
+        next_cursor: { type: [string, "null"] }
+      example:
+        items:
+          - { garage_id: 21, name: 101동 차고지, garage_type: PILOTI_IN, building: { id: 4, name: 햇살빌라 }, title: 햇살빌라 101동 차고지, availability: AVAILABLE, shared_slot_count: 5, min_hourly_price: 2, info: 지금 이용 가능 · 07~23시 }
+          - { garage_id: 22, name: B동 차고지, garage_type: PILOTI_OUT, building: { id: 5, name: 초록빌라 }, title: 초록빌라 B동 차고지, availability: SOON_EXIT, shared_slot_count: 2, min_hourly_price: 2, estimated_free_at: "2026-09-30T15:30:00+09:00", estimate_source: AI_ESTIMATED }
+          - { garage_id: 23, name: 지하 A 차고지, garage_type: PILOTI_IN, building: { id: 6, name: 미래빌라 }, title: 미래빌라 지하 A 차고지, availability: RESERVABLE, shared_slot_count: 3, min_hourly_price: 1, available_from: "2026-10-01T09:00:00+09:00", info: 내일 09시부터 이용 가능 }
+          - { garage_id: 24, name: 외부 차고지, garage_type: ROADSIDE, building: { id: 7, name: 하늘빌라 }, title: 하늘빌라 외부 차고지, availability: AVAILABLE, shared_slot_count: 1, min_hourly_price: 0, max_hours: 2, weekdays_only: true, info: 무료 · 최대 2시간 · 평일만 }
+          - { garage_id: 25, name: 101호 앞, garage_type: PILOTI_OUT, building: { id: 8, name: 푸른빌라 }, title: 푸른빌라 101호 앞, availability: UNAVAILABLE, shared_slot_count: 1, min_hourly_price: 1, info: 현재 이용 불가 }
+        next_cursor: null
+    ShareOfferSummary:
+      type: object
+      description: 칸에 걸린 공유 조건 (DB share_offers)
+      properties:
+        id: { type: integer }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, description: 포함 }
+        weekdays: { type: array, items: { $ref: "#/components/schemas/Weekday" } }
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+        hourly_price: { type: integer, minimum: 0, description: "시간당 토큰. 0 = 무료" }
+        max_hours: { type: [integer, "null"], description: 요청 1건 최대 시간. null = 제한 없음 }
+        memo: { type: [string, "null"] }
+    GarageDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        garage_type: { $ref: "#/components/schemas/GarageType" }
+        building:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            address: { type: string }
+        alley: { $ref: "#/components/schemas/AlleyRef" }
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              slot_id: { type: integer }
+              number: { type: integer }
+              label: { type: string }
+              state: { $ref: "#/components/schemas/GarageSlotState" }
+              estimated_free_at: { type: [string, "null"], format: date-time }
+              in_use_until: { type: [string, "null"], format: date-time }
+              offer:
+                oneOf: [{ $ref: "#/components/schemas/ShareOfferSummary" }, { type: "null" }]
+                description: 오늘 적용되는 공개 공유 조건. null 이면 공유하지 않는 칸
+      example:
+        id: 21
+        name: 101동 차고지
+        garage_type: PILOTI_IN
+        building: { id: 4, name: 햇살빌라, address: 서울특별시 노원구 광운로19가길 20 }
+        alley: { id: 1, name: 광운로19가길 }
+        slots:
+          - { slot_id: 2101, number: 1, label: 101동 차고지 1번, state: AVAILABLE, offer: { id: 501, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2102, number: 2, label: 101동 차고지 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T15:00:00+09:00", offer: { id: 502, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2103, number: 3, label: 101동 차고지 3번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2104, number: 4, label: 101동 차고지 4번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2105, number: 5, label: 101동 차고지 5번, state: AVAILABLE, offer: { id: 505, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+    ShareRequestCreate:
+      type: object
+      required: [offer_id, request_date, start_hour, end_hour]
+      properties:
+        offer_id: { type: integer, description: "칸의 공유 조건 id (차고지 상세의 slots[].offer.id)" }
+        vehicle_id: { type: [integer, "null"], description: 들어갈 차량. 관리인 화면에 번호판으로 표시 }
+        request_date: { type: string, format: date }
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+      example:
+        offer_id: 501
+        vehicle_id: 7
+        request_date: "2026-09-30"
+        start_hour: 15
+        end_hour: 18
+    ShareRequestDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { $ref: "#/components/schemas/ShareRequestStatus" }
+        reject_reason: { type: [string, "null"] }
+        garage:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            building_name: { type: string }
+        slot_id: { type: integer }
+        slot_label: { type: string }
+        request_date: { type: string, format: date }
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+        total_price: { type: integer, description: "토큰. 시간 수 × 요청 시점의 hourly_price" }
+
+    # ── 관리인 ──
+    AdminDashboard:
+      type: object
+      properties:
+        building: { type: object, properties: { id: { type: integer }, name: { type: string } } }
+        pending_requests:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              requester: { type: object, properties: { name: { type: string }, temperature: { type: number } } }
+              slot_label: { type: string }
+              request_date: { type: string, format: date }
+              start_hour: { $ref: "#/components/schemas/Hour" }
+              end_hour: { $ref: "#/components/schemas/Hour" }
+              total_price: { type: integer, description: 토큰 }
+              created_at: { type: string, format: date-time }
+        realtime:
+          type: object
+          properties:
+            available_count: { type: integer }
+            vehicles:
+              type: array
+              items:
+                type: object
+                properties:
+                  slot_id: { type: integer }
+                  slot_label: { type: string }
+                  plate: { type: string }
+                  occupant_type: { $ref: "#/components/schemas/OccupantType" }
+                  can_request_move: { type: boolean }
+        congestion:
+          type: object
+          properties:
+            total_slots: { type: integer }
+            days:
+              type: array
+              items:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  peak_occupied: { type: integer }
+        ai_insight: { type: "null", description: 향후 기능. 지금은 항상 null }
+      example:
+        building: { id: 3, name: 월계 한빛빌라 }
+        pending_requests:
+          - { id: 303, requester: { name: 박○○, temperature: 38.5 }, slot_label: 골목 1번, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 301, requester: { name: 홍○○, temperature: 36.5 }, slot_label: 골목 1번, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, created_at: "2026-09-30T14:10:00+09:00" }
+        realtime:
+          available_count: 3
+          vehicles:
+            - { slot_id: 1003, slot_label: 필로티 외부 1번, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true }
+            - { slot_id: 1006, slot_label: 건물 앞 3번, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false }
+        congestion:
+          total_slots: 8
+          days:
+            - { date: "2026-09-21", peak_occupied: 6 }
+            - { date: "2026-09-22", peak_occupied: 7 }
+            - { date: "2026-09-23", peak_occupied: 5 }
+            - { date: "2026-09-24", peak_occupied: 7 }
+            - { date: "2026-09-25", peak_occupied: 8 }
+            - { date: "2026-09-28", peak_occupied: 5 }
+            - { date: "2026-09-29", peak_occupied: 7 }
+            - { date: "2026-09-30", peak_occupied: 6 }
+        ai_insight: null
+    AdminShareRequestItem:
+      type: object
+      properties:
+        id: { type: integer }
+        requester: { type: object, properties: { name: { type: string }, unit: { type: string } } }
+        plate: { type: [string, "null"] }
+        slot_label: { type: string }
+        request_date: { type: string, format: date }
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+        total_price: { type: integer, description: 토큰 }
+        status: { $ref: "#/components/schemas/ShareRequestStatus" }
+    AdminShareRequestPage:
+      type: object
+      properties:
+        counts:
+          type: object
+          properties:
+            PENDING: { type: integer }
+            APPROVED: { type: integer }
+            REJECTED: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminShareRequestItem" }
+        next_cursor: { type: [string, "null"] }
+      example:
+        counts: { PENDING: 4, APPROVED: 7, REJECTED: 2 }
+        items:
+          - { id: 301, requester: { name: 홍길동, unit: 101동 201호 }, plate: 21가 3456, slot_label: 골목 1번, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, status: PENDING }
+          - { id: 302, requester: { name: 이수진, unit: 102동 302호 }, plate: 34나 7890, slot_label: 필로티 외부 1번, request_date: "2026-10-02", start_hour: 15, end_hour: 19, total_price: 8, status: PENDING }
+          - { id: 303, requester: { name: 박민준, unit: 103동 101호 }, plate: 56다 1234, slot_label: 골목 1번, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, status: PENDING }
+          - { id: 304, requester: { name: 김지영, unit: 101동 403호 }, plate: 78라 5678, slot_label: 필로티 외부 1번, request_date: "2026-10-03", start_hour: 14, end_hour: 17, total_price: 6, status: PENDING }
+          - { id: 305, requester: { name: 최성우, unit: 102동 202호 }, plate: 123가 4634, slot_label: 필로티 외부 1번, request_date: "2026-09-30", start_hour: 13, end_hour: 17, total_price: 8, status: APPROVED }
+          - { id: 306, requester: { name: 정다은, unit: 103동 304호 }, plate: 23바 6789, slot_label: 골목 1번, request_date: "2026-09-29", start_hour: 16, end_hour: 20, total_price: 8, status: REJECTED }
+        next_cursor: null
+    AdminSlot:
+      type: object
+      properties:
+        slot_id: { type: integer }
+        garage_id: { type: integer }
+        number: { type: integer }
+        label: { type: string }
+        is_active: { type: boolean, description: 끄면 배치도에서 선택 불가 (DB 는 삭제 대신 비활성화) }
+        occupied: { type: boolean }
+        share_offer_id: { type: [integer, "null"], description: 지금 적용되는 공유 조건. 없으면 null }
+    ShareOfferCreate:
+      type: object
+      required: [slot_id, start_date, end_date, start_hour, end_hour]
+      properties:
+        slot_id: { type: integer, description: 이 빌라의 활성 칸 }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, description: 포함. start_date 이상 }
+        weekdays:
+          type: array
+          items: { $ref: "#/components/schemas/Weekday" }
+          description: 생략하면 매일
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+        hourly_price: { type: integer, minimum: 0, default: 0, description: "시간당 토큰. 0 이면 무료" }
+        max_hours: { type: [integer, "null"], minimum: 1, description: 요청 1건 최대 시간. null = 제한 없음 }
+        memo: { type: [string, "null"], description: 이용자에게 전달할 사항 }
+        is_public: { type: boolean, default: true, description: false = 공유 중단 }
+      example:
+        slot_id: 1003
+        start_date: "2026-09-01"
+        end_date: "2026-12-31"
+        weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
+        start_hour: 7
+        end_hour: 23
+        hourly_price: 2
+        max_hours: 4
+        memo: 이용 후 칸 비워주세요
+        is_public: true
+    ShareOffer:
       allOf:
-        - $ref: "#/components/schemas/AlleyCreate"
+        - $ref: "#/components/schemas/ShareOfferCreate"
         - type: object
           required: [id]
           properties:
             id: { type: integer }
-
-    BuildingCreate:
+            slot_label: { type: string }
+            host_id: { type: integer, description: 공유를 연 관리인. 수락된 요청의 토큰을 받음 }
+      example:
+        id: 401
+        slot_id: 1003
+        slot_label: 필로티 외부 1번
+        host_id: 2
+        start_date: "2026-09-01"
+        end_date: "2026-12-31"
+        weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
+        start_hour: 7
+        end_hour: 23
+        hourly_price: 2
+        max_hours: 4
+        memo: 이용 후 칸 비워주세요
+        is_public: true
+    ShareOfferUpdate:
       type: object
-      required: [alley_id, name, address, invite_code]
+      description: 칸(slot_id)을 뺀 나머지 필드를 부분 수정
       properties:
-        alley_id: { type: integer }
-        name: { type: string }
-        address: { type: string }
-        detail_address: { type: [string, "null"], default: null }
-        invite_code: { type: string, maxLength: 12, description: 입주민 합류용 초대코드 (유일, 최대 12자) }
-    BuildingRead:
-      type: object
-      required: [id, alley_id, name, address]
-      properties:
-        id: { type: integer }
-        alley_id: { type: integer }
-        name: { type: string }
-        address: { type: string }
-        detail_address: { type: [string, "null"] }
-
-    ParkingSlotCreate:
-      type: object
-      required: [garage_id, number]
-      properties:
-        garage_id: { type: integer, description: 소속 차고지 }
-        number: { type: integer, minimum: 1, description: 차고지 안의 칸 번호 }
-        front_slot_id: { type: [integer, "null"], default: null, description: 바로 앞 칸 (막힘 판정용) }
-        render_x0: { type: [number, "null"], default: null, description: "2.5D 배치도 로컬 좌표 (건물 기준 미터)" }
-        render_y0: { type: [number, "null"], default: null }
-        render_x1: { type: [number, "null"], default: null }
-        render_y1: { type: [number, "null"], default: null }
-    ParkingSlotRead:
-      allOf:
-        - $ref: "#/components/schemas/ParkingSlotCreate"
-        - type: object
-          required: [id, is_active]
-          properties:
-            id: { type: integer }
-            is_active: { type: boolean, description: 사용 여부. 칸은 삭제 대신 비활성화 }
-
-    VehicleCreate:
-      type: object
-      required: [plate_no]
-      properties:
-        plate_no: { type: string, description: 차량 번호 (유일) }
-        color: { type: [string, "null"], default: null }
-        nickname: { type: [string, "null"], default: null }
-        is_primary: { type: boolean, default: false, description: 대표 차량 (사용자당 한 대) }
-        owner_id: { type: [integer, "null"], default: null, description: null 이면 미확인 차량 }
-    VehicleRead:
-      type: object
-      required: [id, plate_no, is_primary]
-      properties:
-        id: { type: integer }
-        plate_no: { type: string }
-        color: { type: [string, "null"] }
-        nickname: { type: [string, "null"] }
-        is_primary: { type: boolean }
-        owner_id: { type: [integer, "null"] }
-
-    DepartureScheduleCreate:
-      type: object
-      required: [vehicle_id, scheduled_date, scheduled_time]
-      properties:
-        vehicle_id: { type: integer }
-        scheduled_date: { type: string, format: date, description: 출차 날짜. 반복이면 반복 시작일 }
-        scheduled_time: { type: string, format: time, description: 출차 시각 (시간대 없음, 서버는 Asia/Seoul 로 해석) }
-        repeat_weekdays:
-          allOf:
-            - $ref: "#/components/schemas/Weekdays"
-          default: []
-        memo: { type: [string, "null"], default: null }
-    DepartureScheduleRead:
-      type: object
-      required: [id, vehicle_id, scheduled_date, scheduled_time, repeat_weekdays, is_ai_estimated]
-      properties:
-        id: { type: integer }
-        vehicle_id: { type: integer }
-        scheduled_date: { type: string, format: date }
-        scheduled_time: { type: string, format: time }
-        repeat_weekdays: { $ref: "#/components/schemas/Weekdays" }
-        memo: { type: [string, "null"] }
-        is_ai_estimated: { type: boolean, description: AI 추정값이면 true (사용자 등록값이 있으면 그쪽이 우선) }
-
-    ShareOfferCreate:
-      type: object
-      required: [slot_id, host_id, start_date, end_date, start_hour, end_hour]
-      properties:
-        slot_id: { type: integer }
-        host_id: { type: integer, description: 토큰을 받는 칸 주인 (인증 도입 전이라 본문으로 받음) }
         start_date: { type: string, format: date }
-        end_date: { type: string, format: date, description: 포함. start_date 이상이어야 함 }
-        available_weekdays:
-          allOf:
-            - $ref: "#/components/schemas/Weekdays"
-          default: [0, 1, 2, 3, 4, 5, 6]
-        start_hour: { type: integer, minimum: 0, maximum: 23 }
-        end_hour: { type: integer, minimum: 1, maximum: 24, description: "24 = 자정. start_hour 보다 커야 함" }
-        hourly_price: { type: integer, minimum: 0, default: 0, description: 시간당 토큰. 0 = 무료 }
-        max_hours: { type: [integer, "null"], default: null, description: 요청 1건 최대 이용 시간. null = 제한 없음 }
-        memo: { type: [string, "null"], default: null }
-        is_public: { type: boolean, default: true, description: false 면 공유 중단 }
-    ShareOfferRead:
-      allOf:
-        - type: object
-          required: [id, created_at]
-          properties:
-            id: { type: integer }
-            created_at: { type: string, format: date-time }
-        - $ref: "#/components/schemas/ShareOfferCreate"
+        end_date: { type: string, format: date }
+        weekdays: { type: array, items: { $ref: "#/components/schemas/Weekday" } }
+        start_hour: { $ref: "#/components/schemas/Hour" }
+        end_hour: { $ref: "#/components/schemas/Hour" }
+        hourly_price: { type: integer, minimum: 0 }
+        max_hours: { type: [integer, "null"] }
+        memo: { type: [string, "null"] }
+        is_public: { type: boolean }
 
-    ShareRequestStatus:
-      type: string
-      enum: [pending, accepted, rejected]
-      description: 대기 / 수락 / 거절
-    ShareRequestCreate:
+    # ── 알림 ──
+    NotificationItem:
       type: object
-      required: [offer_id, requester_id, request_date, start_hour, end_hour]
-      properties:
-        offer_id: { type: integer }
-        requester_id: { type: integer, description: 요청자 (인증 도입 전이라 본문으로 받음) }
-        vehicle_id: { type: [integer, "null"], default: null, description: 이용 차량 }
-        request_date: { type: string, format: date }
-        start_hour: { type: integer, minimum: 0, maximum: 23 }
-        end_hour: { type: integer, minimum: 1, maximum: 24, description: "24 = 자정. start_hour 보다 커야 함 (아니면 422)" }
-    ShareRequestRead:
-      type: object
-      required: [id, offer_id, slot_id, requester_id, request_date, start_hour, end_hour, total_price, status, created_at]
       properties:
         id: { type: integer }
-        offer_id: { type: integer }
-        slot_id: { type: integer, description: 공유 조건의 칸 (서버가 채움) }
-        requester_id: { type: integer }
-        vehicle_id: { type: [integer, "null"] }
-        request_date: { type: string, format: date }
-        start_hour: { type: integer }
-        end_hour: { type: integer }
-        total_price: { type: integer, description: 요청 시 고정되는 토큰 총액 (시간 수 × 시간당 토큰) }
-        status: { $ref: "#/components/schemas/ShareRequestStatus" }
-        reject_reason: { type: [string, "null"] }
+        type: { $ref: "#/components/schemas/NotificationType" }
+        title: { type: string }
+        body: { type: string }
+        link:
+          type: [object, "null"]
+          properties:
+            screen: { type: string, description: "이동할 화면 (MOVE_REQUEST, SHARE_REQUEST 등)" }
+            id: { type: integer }
+        is_read: { type: boolean }
         created_at: { type: string, format: date-time }
-        responded_at: { type: [string, "null"], format: date-time }
-    ShareRequestDecision:
+    NotificationPage:
       type: object
-      required: [status]
       properties:
-        status:
-          type: string
-          enum: [accepted, rejected]
-          description: "`pending` 은 보낼 수 없음 (422)"
-        reject_reason: { type: [string, "null"], default: null, description: 거절 사유 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NotificationItem" }
+        next_cursor: { type: [string, "null"] }
+      example:
+        items:
+          - { id: 92, type: BLOCK_ALERT, title: 막힘 알림, body: 내 차량이 302호 차량에 의해 막혀 있습니다., link: { screen: HOME, id: 556 }, is_read: false, created_at: "2026-09-30T14:20:00+09:00" }
+          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 201호 김민준, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: true, created_at: "2026-09-30T14:30:00+09:00" }
+          - { id: 85, type: NIGHT_BEFORE, title: 내일 출차 안내, body: 내일 07:30 출차하는 차량이 내 차량을 막고 있어요, link: null, is_read: true, created_at: "2026-09-29T22:30:00+09:00" }
+          - { id: 80, type: SHARE_RESULT, title: 공유 요청이 거절되었어요, body: 주차 구역 용량 초과, link: { screen: SHARE_REQUEST, id: 301 }, is_read: true, created_at: "2026-09-29T17:00:00+09:00" }
+        next_cursor: null

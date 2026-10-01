@@ -125,9 +125,18 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 차고지, 이동 요청, 토큰 충전·선물, 인증 API는 아직 없습니다. 구현할 때는 `docs/db-design-issues.md` 5장의 체크리스트를 참고하세요.
 
 ### Swagger 명세서 (Mock 데이터)
-서버나 DB 없이 API 명세를 볼 수 있습니다. 현재 구현된 엔드포인트와 예시 요청·응답, 에러 메시지를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
+서버나 DB 없이 API 명세를 볼 수 있습니다. **Notion "차곡차곡 API 명세 v0.2"와 Manyfast 와이어프레임(23개 화면)을 기준으로 한 설계 명세**이고, 50개 엔드포인트의 예시 요청·응답과 에러 코드를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
 
-- 명세 파일: [`docs/openapi-mock.yaml`](docs/openapi-mock.yaml) (OpenAPI 3.1)
+다만 아래 네 가지는 Notion 대신 **현재 DB 스키마(`app/models/`)를 따릅니다.**
+
+- 결제는 원이 아니라 **토큰** (`residents.token_balance`, `token_transfers`)
+- 차고지(Garage)는 공유 상품이 아니라 **빌라 안의 주차 공간**이고, 공유 조건은 칸마다 두는 `share_offers`
+- 계층은 **골목 > 빌라 > 차고지 > 칸** (막힘은 `front_slot_id`)
+- **한 사용자는 한 빌라에만 소속** (`residents.building_id`)
+
+> ⚠️ 현재 서버 구현(`/alleys`, `/share-offers` 등, 인증 없음)과는 경로·응답 모양이 다릅니다. 이전의 "현재 구현 기준" 명세는 git 이력(PR #1)에 있습니다.
+
+- 명세 파일: [`docs/openapi-mock.yaml`](docs/openapi-mock.yaml) (OpenAPI 3.1, 화면 번호 #1~#23은 Notion 매핑표와 같음)
 - 보기 페이지: [`docs/swagger-mock.html`](docs/swagger-mock.html) (Swagger UI를 CDN에서 불러오므로 인터넷 연결 필요)
 
 **방법 1: 로컬에서 열기** (Node.js 필요)
@@ -143,7 +152,8 @@ npx http-server -p 8080
 주의할 점
 - Swagger UI의 **Try it out**은 Mock이 아니라 `http://localhost:8000/api/v1`(실제 서버)로 요청을 보냅니다. 서버를 띄우지 않았다면 실패하는 게 정상입니다.
 - 엔드포인트나 스키마를 바꾸면 `docs/openapi-mock.yaml`도 같이 고쳐 주세요. FastAPI가 자동 생성하는 명세는 서버 실행 후 http://localhost:8000/docs 에서 볼 수 있습니다.
-- enum은 API에서 **소문자 값**(`pending`, `accepted`)으로 주고받습니다.
+- 이 명세의 enum은 **대문자 값**(`PENDING`, `APPROVED`), 요일은 `MON`~`SUN`, 금액은 토큰입니다. 현재 구현은 소문자 enum·정수 요일이라 서로 맞추는 작업이 필요합니다.
+- 명세 맨 위 "열린 질문" 표에 팀 합의가 필요한 항목(홈 요약 칩 정의, 칸 이름 규칙 등)을 정리해 두었습니다.
 
 ## 개발 규칙
 - 엔드포인트에서는 DB 세션을 `db: DbSession`(`app/api/deps.py`)으로 받습니다. 기본값에 `Depends()`를 쓰는 방식은 lint(B008)에 걸립니다.
