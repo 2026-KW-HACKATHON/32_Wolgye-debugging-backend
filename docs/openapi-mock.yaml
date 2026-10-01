@@ -6,8 +6,8 @@ info:
     빌라 골목 주차 공유 앱 **차곡차곡**의 API 명세(v0.2)입니다. 프런트가 서버 없이 화면을 만들 수 있도록 **예시 값은 모두 가짜(Mock) 데이터**로 채웠습니다.
 
     ### 기준 문서
-    - **Manyfast 명세·와이어프레임 23개 화면이 기준**입니다 (문구·선택지·화면 흐름). Figma "월계디버깅 / 와이어프레임" 페이지는 같은 화면의 최신본이라 함께 대조했습니다.
-    - Notion "차곡차곡 API 명세 v0.2" 는 **임시 API 명세**입니다 (엔드포인트·필드·에러 코드 초안). Manyfast 와 다르면 Manyfast 를 따릅니다. 화면 번호 #1~#23 은 Notion 의 "화면 → API 매핑" 번호와 같습니다.
+    - **Figma "월계디버깅 / 와이어프레임" 페이지가 기준**입니다 (문구·선택지·화면 흐름). Manyfast 와이어프레임 23개 화면은 같은 화면의 이전본이고, 요구사항(PRD)은 Manyfast 를 참고합니다.
+    - Notion "차곡차곡 API 명세 v0.2" 는 **임시 API 명세**입니다 (엔드포인트·필드·에러 코드 초안). Figma 와 다르면 Figma 를 따릅니다. 화면 번호 #1~#23 은 Notion 의 "화면 → API 매핑" 번호와 같습니다.
     - **DB 에 저장할 곳이 없는 기능은 API 로 만들지 않습니다** (알림 설정, Web Push 구독, 로그아웃, 공유 요청 취소, 미확인 차량 메모, 긴급 이동 요청 등).
 
     - 현재 DB 스키마 (`app/models/`). 아래 네 가지는 Notion v0.2 대신 **DB 를 따릅니다**.
@@ -16,8 +16,8 @@ info:
     | 항목 | Notion v0.2 | 이 명세 (DB 기준) |
     |---|---|---|
     | 결제 | 원 | **토큰**. `residents.token_balance` 로 보유, 수락 시 요청자 → 공유를 연 관리인에게 이동 (`token_transfers`) |
-    | 차고지(Garage) | 관리인이 등록하는 공유 상품 (칸 묶음 + 시간 + 요금) | **빌라 안의 주차 공간** (`garages`: 이름·유형). 기간·시간·토큰 가격은 칸마다 따로 두는 **공유 조건** (`share_offers`) 에 있음 |
-    | 계층 | Building > Zone > Lane > Slot (`depth`) | **골목(Alley) > 빌라(Building) > 차고지(Garage) > 칸(Slot)**. 막힘은 `front_slot_id` 로 계산 |
+    | 차고지(Garage) | 관리인이 등록하는 공유 상품 (칸 묶음 + 시간 + 요금) | **빌라의 주차장**. 빌라 하나에 차고지 하나라서 API 의 `garage_id` 는 빌라 id 와 같음. 시간·토큰 가격은 칸마다 따로 두는 **공유 조건** (`share_offers`) 에 있음 |
+    | 계층 | Building > Zone > Lane > Slot (`depth`) | **골목(Alley) > 빌라(Building) = 차고지 > 주차 구역(Zone) > 칸(Slot)**. 주차 구역은 필로티 안쪽·건물 앞·골목 같은 묶음 (DB 테이블 이름은 `garages`). 막힘은 `front_slot_id` 로 계산 |
     | 사용자–빌라 | 여러 빌라 소속 가능 (`BuildingMember`) | **한 사용자는 한 빌라에만 소속** (`residents.building_id`). 이미 소속된 사용자가 합류하면 409 |
 
     > ⚠️ **현재 서버 구현과도 다릅니다.** 인증·경로·응답 모양은 설계(목표) 기준입니다. 이전에 만든 "현재 구현 기준" 명세(`/alleys`, `/share-offers` 등)는 git 이력(PR #1)에 있습니다.
@@ -41,16 +41,17 @@ info:
     | 사용자 1 | 김지수 · 월계 한빛빌라 101동 202호 입주민 · 차량 7 (`12가 3456` 흰색, 대표) · 보유 토큰 30 |
     | 사용자 2 | 박OO · 한빛빌라 관리인 |
     | 사용자 3 | 101동 302호 이웃 · 차량 `34나 5678` (지수 차량을 막고 있음). 다른 입주민에게는 호수 대신 칸 이름·동까지만 보임 |
-    | 빌라 3 | 월계 한빛빌라, 초대코드 `HANBIT01`. 차고지 4개, 칸 8개: 차고지 10 필로티 안쪽(1·2) / 11 필로티 외부(1) / 12 건물 앞(1·2·3) / 13 골목(1·2) |
+    | 빌라 3 | 월계 한빛빌라 (= 차고지 3), 초대코드 `HANBIT01`. 주차 구역 4개, 칸 8개: 구역 10 필로티 안쪽(1·2) / 11 필로티 외부(1) / 12 건물 앞(1·2·3) / 13 골목(1·2) |
     | 빌라 3 공유 조건 | 401 (필로티 외부 1번), 402 (골목 1번). 07~23시, 시간당 2토큰, 최대 4시간 |
-    | 빌라 4 | 햇살빌라. 차고지 21 "101동 차고지" 칸 2101~2105, 공유 조건 501~505 (시간당 2토큰, 최대 4시간) |
+    | 빌라 4 | 햇살빌라 (= 차고지 4). 구역 21 골목(칸 2101·2102) / 22 필로티 외부(2103·2104) / 23 건물 앞(2105). 공유 조건 501~505 (07~23시, 시간당 2토큰, 최대 4시간) |
 
     ### 와이어프레임 반영 사항
     - 차량 색상 선택지: 검정·흰색·은색·회색·파랑·빨강·기타 (온보딩 화면 #5)
     - 차량 관리 화면(#22)은 색상 대신 별칭·대표 설정만 있어 `color`, `alias` 를 모두 선택 입력으로 둠
+    - 차고지 상세의 운영 시간·요금·최대 이용은 공유 칸들의 조건을 모아서 보여줌 (가장 이른 시작 ~ 가장 늦은 종료, 가장 싼 요금, 가장 긴 최대 이용)
     - 차고지 칸 상태는 `AVAILABLE` / `SOON_EXIT` / `IN_USE` (#14), 탐색 목록은 `AVAILABLE` / `SOON_EXIT` / `RESERVABLE` / `UNAVAILABLE` (#13)
     - 차고지 등록(#20)의 "최대 이용 시간: 제한 없음" 은 `max_hours: null`
-    - 요일 프리셋(매일·평일·주말·월~금·토~일)은 FE 에서 `weekdays` 배열로 변환
+    - 차고지 등록의 요일은 Figma 처럼 요일 칩 여러 개 선택 → `weekdays` 배열
     - 화면의 "○○원" 표기는 토큰으로 바꿔야 합니다 (#13, #14, #20)
     - 이동 요청에 긴급 구분이 없습니다. 이동 요청 수신 화면(#12)의 "긴급 이동 요청" 문구는 일반 "이동 요청" 으로 봅니다
     - 알림 종류는 와이어프레임에 나오는 5가지(막힘·이동 요청·출차 완료·공유 사용 요청·공유 결과)만 둡니다. 전날 밤 사전 알림은 막힘 알림(`BLOCK_ALERT`)에 포함
@@ -62,18 +63,18 @@ info:
     | # | 내용 | Mock 에서의 처리 |
     |---|---|---|
     | 1 | 홈 요약 칩 정의 (14-1) | 빈칸=비어 있는 칸, 가능=빈칸+1시간 내 출차, 막힘=막힌 입주민 차량 수 (제안안) |
-    | 2 | 칸 이름 규칙 (14-2) | `차고지 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. Figma 최신본은 이 형식을 씀. Manyfast 의 `A-1 구역`, `C-1 · 골목 후면` 표기는 옛 형식 |
+    | 2 | 칸 이름 규칙 (14-2) | `주차 구역 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. Figma 가 이 형식을 씀 (Manyfast 의 `A-1 구역` 은 옛 형식) |
     | 3 | 차량 색상 입력 (14-3) | 색상·별칭 모두 선택 |
     | 4 | 공유 요청 시간 입력 화면 없음 (14-4) | 요청 본문에 `request_date`, `start_hour`, `end_hour` 를 받음 |
     | 5 | 요금 단위 (14-5) | 시간당 토큰 `hourly_price`. Figma 최신본은 "시간당" 으로 고쳐져 있음 (Manyfast 차고지 상세의 "30분당" 은 옛 표기) |
-    | 6 | 탐색 목록 단위 (14-6) | 차고지 단위. 공개된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 노출. ⚠️ Figma 최신본은 목록 항목이 칸 단위("햇살빌라 · 골목 2번")이고, 차고지 상세 한 화면에 여러 차고지의 칸(골목·필로티 외부·건물 앞)이 함께 나옴 → "차고지 = 빌라의 공유 칸 묶음" 으로 읽힘. DB(`garages` = 빌라 안의 주차 공간)와 맞출지 결정 필요 |
+    | 6 | 탐색 목록 단위 (14-6) | Figma 대로 **칸 단위** ("햇살빌라 · 골목 2번"). 탭하면 그 빌라의 차고지 상세로 이동 |
     | 7 | 온보딩 단계 (14-7) | Figma 최신본은 2단계(건물 합류 → 차량 등록)라 해결됨. `onboarding_step` 은 JOIN_BUILDING → REGISTER_VEHICLE → DONE |
     | 8 | 연락처 비노출 (14-9) vs 기존 "비노출 대상 아님" 기획 결정 | 본인에게만 마스킹 응답, 타인에겐 미제공 |
     | 9 | 와이어프레임 데이터 불일치 | 김지수 동·호수 #10 은 203호, #23 은 202호 → **202호** 사용 |
     | 10 | 와이어프레임 화면 링크 끊김 | 알림 목록(n26), 가입 완료(n7), 옮겼어요 완료(n31), 역할 안내(n54), 알림 설정(n55) 화면이 아직 없음. 알림 설정은 DB 에 저장할 곳이 없어 API 도 없음 |
     | 11 | 정의되지 않은 에러 코드 | `PLATE_EXISTS`, `ALREADY_DECIDED`, `MOVE_REQUEST_ALREADY_PENDING`, `ALREADY_IN_BUILDING`, `INSUFFICIENT_TOKENS` 를 **제안**으로 추가 |
-    | 12 | 차고지 등록 화면(#20)이 DB 와 다름 | 화면은 이름·상세 위치를 입력하고 칸을 여러 개 고르지만, DB 의 공유 조건은 칸 하나당 하나이고 이름·위치 컬럼이 없음 → **칸마다 한 번씩 등록**, 이름·위치 입력은 뺌 |
-    | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`(칸 설정 모달 #19 의 "공유 가능" 토글)·`unavailable_reason`, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
+    | 12 | 차고지 등록 화면(#20)의 이름·상세 위치 | 차고지 = 빌라라서 이름·위치는 빌라의 `name`·`address` 를 씀. 화면의 차고지 이름·상세 위치 입력은 저장할 곳이 없어 받지 않음. 여러 칸을 고르면 칸마다 공유 조건이 하나씩 생김 |
+    | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`(칸 설정 모달 #19 의 "공유 가능" 토글)·`unavailable_reason`, 차고지 상세의 유의 사항, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
     | 14 | 빌라 이동·탈퇴 | 한 빌라에만 소속되므로 이사하면 기존 빌라에서 나가야 하는데 그 API·화면이 없음 |
     | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. 지급 방법(가입 시 지급 등) 미정 |
     | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
@@ -92,7 +93,7 @@ tags:
   - { name: vehicles, description: "차량 등록·관리·상세 (#5, #10, #22), 반복 출차 일정 (#9)" }
   - { name: parkings, description: "주차 배치 등록·출차 일정 수정·출차 (#7, #8, #11)" }
   - { name: move-requests, description: "이동 요청 (#12)" }
-  - { name: garages, description: "공유 주차 탐색·차고지 상세 (#13, #14). 같은 골목의 다른 빌라 차고지" }
+  - { name: garages, description: "공유 주차 탐색·차고지 상세 (#13, #14). 차고지 = 같은 골목에 있는 다른 빌라의 주차장" }
   - { name: share-requests, description: "공유 요청과 결과 확인 (#15~#17). 이용료는 토큰" }
   - { name: admin, description: "관리인 (#18~#21), 🛠 해당 빌라 관리인만" }
   - { name: notifications, description: "알림 목록 (알림 탭, 화면 미작성)" }
@@ -298,7 +299,7 @@ paths:
       tags: [buildings]
       summary: 🏠 배치도 (정적, FE 캐싱) (#6)
       description: |
-        DB 계층 그대로 **골목 > 빌라 > 차고지 > 칸** 을 내려줍니다.
+        DB 계층 그대로 **골목 > 빌라(차고지) > 주차 구역 > 칸** 을 내려줍니다.
         - `rect` 는 건물 기준 미터 단위 로컬 좌표(`render_x0..y1`)이며 2.5D 배치도 렌더링·탭 판정에 씁니다
         - `front_slot_id` 는 이 칸 바로 앞(출구 쪽) 칸입니다. 앞 칸에 차가 있으면 이 칸 차는 막힙니다
         - 본인이 소속된 빌라만 조회할 수 있습니다 (아니면 403)
@@ -835,8 +836,8 @@ paths:
       tags: [garages]
       summary: 👤 공유 주차 탐색 (#13)
       description: |
-        **내 빌라와 같은 골목(alley)에 있는 다른 빌라의 차고지** 중, 공개(`is_public=true`)된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 내려갑니다.
-        차고지는 빌라 안의 주차 공간(DB `garages`)이고, 요금·시간 같은 공유 조건은 칸마다 다를 수 있어 목록에는 가장 싼 값(`min_hourly_price`, 토큰)을 보여줍니다.
+        **내 빌라와 같은 골목(alley)에 있는 다른 빌라의 차고지(주차장)** 에서 공개(`is_public=true`)된 공유 조건이 걸린 **칸** 을 하나씩 내려갑니다 (Figma: "햇살빌라 · 골목 2번").
+        항목을 탭하면 `garage_id`(= 빌라 id) 로 차고지 상세를 엽니다.
         입주민 출차 시간 원본은 노출하지 않고 `estimated_free_at` 만 제공합니다.
         필터: `all`(전체) · `now`(즉시 가능) · `reservable`(예약 가능) · `free`(무료, 0토큰)
       operationId: listGarages
@@ -852,7 +853,7 @@ paths:
         - { $ref: "#/components/parameters/Limit" }
       responses:
         "200":
-          description: 차고지 목록
+          description: 공유 칸 목록
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GarageListPage" }
@@ -862,7 +863,8 @@ paths:
       tags: [garages]
       summary: 👤 차고지 상세 (#14)
       description: |
-        차고지의 칸 목록과 칸별 공유 조건(`offer`)을 내려줍니다. `offer` 가 `null` 인 칸은 공유하지 않는 칸입니다.
+        빌라 주차장(차고지)에서 공유 중인 칸과 칸별 공유 조건(`offer`)을 내려줍니다. 여러 주차 구역의 칸이 한 화면에 나옵니다 (Figma: 골목 1번 · 필로티 외부 1번 · 건물 앞 1번).
+        `garage_id` 는 빌라 id 입니다. 윗부분의 운영 시간·요금·최대 이용은 `summary` 로 내려갑니다.
         "요청하기" 는 고른 칸의 `offer.id` 로 `POST /share-requests` 를 호출합니다.
       operationId: getGarage
       x-priority: 2주차
@@ -947,13 +949,13 @@ paths:
               examples:
                 pending:
                   summary: "#15 요청 확인 중"
-                  value: { id: 301, status: PENDING, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
                 approved:
                   summary: "#16 요청 수락됨"
-                  value: { id: 301, status: APPROVED, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: APPROVED, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
                 rejected:
                   summary: "#17 요청 거절됨"
-                  value: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /me/share-requests:
@@ -975,7 +977,7 @@ paths:
                     items: { $ref: "#/components/schemas/ShareRequestDetail" }
               example:
                 items:
-                  - { id: 301, status: PENDING, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  - { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ───────────────────────── 관리인 ─────────────────────────
@@ -1078,7 +1080,7 @@ paths:
     get:
       tags: [admin]
       summary: 🛠 주차 구역 설정 목록 (#19)
-      description: "차고지·칸 추가·삭제는 운영팀 전용이라 관리인 API 가 없습니다. `share_offer_id` 가 있으면 공유 조건이 걸린 칸입니다."
+      description: "주차 구역·칸 추가·삭제는 운영팀 전용이라 관리인 API 가 없습니다. `share_offer_id` 가 있으면 공유 조건이 걸린 칸입니다."
       operationId: listAdminSlots
       x-priority: 2주차
       parameters:
@@ -1096,14 +1098,14 @@ paths:
                     items: { $ref: "#/components/schemas/AdminSlot" }
               example:
                 items:
-                  - { slot_id: 1001, garage_id: 10, number: 1, label: 필로티 안쪽 1번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1002, garage_id: 10, number: 2, label: 필로티 안쪽 2번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1003, garage_id: 11, number: 1, label: 필로티 외부 1번, is_active: true, occupied: true, share_offer_id: 401 }
-                  - { slot_id: 1004, garage_id: 12, number: 1, label: 건물 앞 1번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1005, garage_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
-                  - { slot_id: 1006, garage_id: 12, number: 3, label: 건물 앞 3번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1007, garage_id: 13, number: 1, label: 골목 1번, is_active: true, occupied: false, share_offer_id: 402 }
-                  - { slot_id: 1008, garage_id: 13, number: 2, label: 골목 2번, is_active: true, occupied: false, share_offer_id: null }
+                  - { slot_id: 1001, zone_id: 10, number: 1, label: 필로티 안쪽 1번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1002, zone_id: 10, number: 2, label: 필로티 안쪽 2번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1003, zone_id: 11, number: 1, label: 필로티 외부 1번, is_active: true, occupied: true, share_offer_id: 401 }
+                  - { slot_id: 1004, zone_id: 12, number: 1, label: 건물 앞 1번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1005, zone_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
+                  - { slot_id: 1006, zone_id: 12, number: 3, label: 건물 앞 3번, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1007, zone_id: 13, number: 1, label: 골목 1번, is_active: true, occupied: false, share_offer_id: 402 }
+                  - { slot_id: 1008, zone_id: 13, number: 2, label: 골목 2번, is_active: true, occupied: false, share_offer_id: null }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
   /admin/slots/{slot_id}:
@@ -1130,7 +1132,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminSlot" }
-              example: { slot_id: 1005, garage_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
+              example: { slot_id: 1005, zone_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1162,10 +1164,10 @@ paths:
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
     post:
       tags: [admin]
-      summary: 🛠 차고지 등록 = 칸 공유 조건 등록 (#20)
+      summary: 🛠 차고지 등록 = 고른 칸들에 공유 조건 등록 (#20)
       description: |
-        화면 이름은 "차고지 등록" 이지만 DB 에서는 **칸 하나에 공유 조건을 거는 것**(`share_offers`)입니다. 차고지 자체(`garages`)는 운영팀이 미리 등록합니다.
-        - 칸을 여러 개 공유하려면 **칸마다 한 번씩** 호출합니다
+        차고지는 빌라의 주차장이라 이미 있습니다. "차고지 등록" 은 **공유할 칸을 고르고 조건을 거는 것**이며, DB 에는 칸마다 공유 조건(`share_offers`)이 하나씩 생깁니다.
+        - Figma 처럼 칸을 여러 개 고르면 `slot_ids` 로 한 번에 보냅니다. 응답은 만들어진 공유 조건 목록입니다 (하나라도 실패하면 전부 취소)
         - `host` 는 호출한 관리인이며, 수락된 요청의 토큰을 받습니다
         - 와이어프레임 입력 중 가용 시간(시작·종료, **정시 단위**), 요일, 시간당 요금(0이면 무료), 최대 이용 시간(제한 없음 = `null`), 메모, 공개 여부를 받습니다. 이름·상세 위치 안내는 DB 에 없어 받지 않습니다 (열린 질문 #12)
         - 시작일·종료일 입력은 없습니다. 등록하면 그날부터 무기한 공유되고, 멈추려면 `is_public=false` 로 바꿉니다
@@ -1184,7 +1186,16 @@ paths:
           description: 등록됨
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ShareOffer" }
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ShareOffer" }
+              example:
+                items:
+                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
         "400":
           description: 검증 실패 (비활성 칸·다른 빌라 칸·시간 범위 오류 등)
           content:
@@ -1344,7 +1355,7 @@ components:
     VehicleId: { name: vehicle_id, in: path, required: true, schema: { type: integer }, example: 7 }
     ParkingId: { name: parking_id, in: path, required: true, schema: { type: integer }, example: 556 }
     MoveRequestId: { name: move_request_id, in: path, required: true, schema: { type: integer }, example: 44 }
-    GarageId: { name: garage_id, in: path, required: true, schema: { type: integer }, example: 21 }
+    GarageId: { name: garage_id, in: path, required: true, description: 차고지 id = 빌라 id, schema: { type: integer }, example: 4 }
     ShareRequestId: { name: share_request_id, in: path, required: true, schema: { type: integer }, example: 301 }
     OfferId: { name: offer_id, in: path, required: true, schema: { type: integer }, example: 401 }
     Cursor: { name: cursor, in: query, required: false, description: 이전 응답의 next_cursor, schema: { type: string } }
@@ -1429,10 +1440,10 @@ components:
 
     # ── Enum ──
     BuildingRole: { type: string, enum: [RESIDENT, ADMIN], description: "입주민 / 관리인. DB 는 residents.role 의 RESIDENT / MANAGER" }
-    GarageType:
+    ZoneType:
       type: string
       enum: [PILOTI_IN, PILOTI_OUT, ROADSIDE]
-      description: 필로티 내부 / 필로티 외부·건물 앞 / 골목 노상 (DB garage_type)
+      description: 주차 구역 유형. 필로티 내부 / 필로티 외부·건물 앞 / 골목 노상 (DB garage_type)
     Hour: { type: integer, minimum: 0, maximum: 24, description: "정시 단위 시각. 24 = 자정" }
     AlleyRef:
       type: object
@@ -1543,20 +1554,20 @@ components:
     # ── 배치도 · 현황 · 홈 ──
     BuildingLayout:
       type: object
-      description: 골목 > 빌라 > 차고지 > 칸 (DB 계층 그대로)
+      description: 골목 > 빌라(차고지) > 주차 구역 > 칸 (DB 계층 그대로)
       properties:
         building_id: { type: integer }
         name: { type: string }
         alley: { $ref: "#/components/schemas/AlleyRef" }
-        garages:
+        zones:
           type: array
-          description: sort_order 순
+          description: 주차 구역 (DB garages), sort_order 순
           items:
             type: object
             properties:
               id: { type: integer }
               name: { type: string, description: 빌라 안에서 유일 }
-              garage_type: { $ref: "#/components/schemas/GarageType" }
+              zone_type: { $ref: "#/components/schemas/ZoneType" }
               sort_order: { type: integer }
               slots:
                 type: array
@@ -1564,8 +1575,8 @@ components:
                   type: object
                   properties:
                     id: { type: integer }
-                    number: { type: integer, minimum: 1, description: 차고지 안 번호 (차고지 안에서 유일) }
-                    label: { type: string, description: 차고지 이름 + 번호 }
+                    number: { type: integer, minimum: 1, description: 주차 구역 안 번호 (구역 안에서 유일) }
+                    label: { type: string, description: 주차 구역 이름 + 번호 }
                     front_slot_id: { type: [integer, "null"], description: 이 칸 바로 앞(출구 쪽) 칸. 없으면 null }
                     is_active: { type: boolean, description: false 면 사용 불가 칸 }
                     rect:
@@ -1580,23 +1591,23 @@ components:
         building_id: 3
         name: 월계 한빛빌라
         alley: { id: 1, name: 광운로19가길 }
-        garages:
+        zones:
           - id: 10
             name: 필로티 안쪽
-            garage_type: PILOTI_IN
+            zone_type: PILOTI_IN
             sort_order: 0
             slots:
               - { id: 1001, number: 1, label: 필로티 안쪽 1번, front_slot_id: 1002, is_active: true, rect: { x0: 4.0, y0: 0.0, x1: 6.5, y1: 5.0 } }
               - { id: 1002, number: 2, label: 필로티 안쪽 2번, front_slot_id: null, is_active: true, rect: { x0: 4.0, y0: 5.0, x1: 6.5, y1: 10.0 } }
           - id: 11
             name: 필로티 외부
-            garage_type: PILOTI_OUT
+            zone_type: PILOTI_OUT
             sort_order: 1
             slots:
               - { id: 1003, number: 1, label: 필로티 외부 1번, front_slot_id: null, is_active: true, rect: { x0: 7.0, y0: 0.0, x1: 9.5, y1: 5.0 } }
           - id: 12
             name: 건물 앞
-            garage_type: PILOTI_OUT
+            zone_type: PILOTI_OUT
             sort_order: 2
             slots:
               - { id: 1004, number: 1, label: 건물 앞 1번, front_slot_id: 1005, is_active: true, rect: { x0: 0.0, y0: 11.0, x1: 2.5, y1: 16.0 } }
@@ -1604,7 +1615,7 @@ components:
               - { id: 1006, number: 3, label: 건물 앞 3번, front_slot_id: null, is_active: true, rect: { x0: 3.0, y0: 11.0, x1: 5.5, y1: 16.0 } }
           - id: 13
             name: 골목
-            garage_type: ROADSIDE
+            zone_type: ROADSIDE
             sort_order: 3
             slots:
               - { id: 1007, number: 1, label: 골목 1번, front_slot_id: 1008, is_active: true, rect: { x0: 10.0, y0: 11.0, x1: 12.5, y1: 16.0 } }
@@ -1825,15 +1836,15 @@ components:
     # ── 공유 주차 (이용자) ──
     GarageListItem:
       type: object
+      description: 공유 칸 하나 (Figma "햇살빌라 · 골목 2번")
       properties:
-        garage_id: { type: integer }
-        name: { type: string }
-        garage_type: { $ref: "#/components/schemas/GarageType" }
-        building: { type: object, properties: { id: { type: integer }, name: { type: string } } }
-        title: { type: string, description: 목록 표시용 (빌라 이름 + 차고지 이름) }
+        garage_id: { type: integer, description: 차고지 id = 빌라 id }
+        building_name: { type: string }
+        slot_id: { type: integer }
+        slot_label: { type: string, description: 주차 구역 이름 + 번호 }
+        title: { type: string, description: "목록 표시용 (빌라 이름 · 칸 이름)" }
         availability: { $ref: "#/components/schemas/GarageAvailability" }
-        shared_slot_count: { type: integer, description: 공개된 공유 조건이 있는 칸 수 }
-        min_hourly_price: { type: integer, description: "시간당 토큰 중 가장 싼 값. 0 = 무료" }
+        hourly_price: { type: integer, description: "시간당 토큰. 0 = 무료" }
         info: { type: [string, "null"], description: 목록 보조 문구 }
         estimated_free_at: { type: [string, "null"], format: date-time }
         estimate_source: { oneOf: [{ $ref: "#/components/schemas/ExitSource" }, { type: "null" }] }
@@ -1849,11 +1860,11 @@ components:
         next_cursor: { type: [string, "null"] }
       example:
         items:
-          - { garage_id: 21, name: 101동 차고지, garage_type: PILOTI_IN, building: { id: 4, name: 햇살빌라 }, title: 햇살빌라 101동 차고지, availability: AVAILABLE, shared_slot_count: 5, min_hourly_price: 2, info: 지금 이용 가능 · 07~23시 }
-          - { garage_id: 22, name: B동 차고지, garage_type: PILOTI_OUT, building: { id: 5, name: 초록빌라 }, title: 초록빌라 B동 차고지, availability: SOON_EXIT, shared_slot_count: 2, min_hourly_price: 2, estimated_free_at: "2026-09-30T15:30:00+09:00", estimate_source: AI_ESTIMATED }
-          - { garage_id: 23, name: 지하 A 차고지, garage_type: PILOTI_IN, building: { id: 6, name: 미래빌라 }, title: 미래빌라 지하 A 차고지, availability: RESERVABLE, shared_slot_count: 3, min_hourly_price: 1, available_from: "2026-10-01T09:00:00+09:00", info: 내일 09시부터 이용 가능 }
-          - { garage_id: 24, name: 외부 차고지, garage_type: ROADSIDE, building: { id: 7, name: 하늘빌라 }, title: 하늘빌라 외부 차고지, availability: AVAILABLE, shared_slot_count: 1, min_hourly_price: 0, max_hours: 2, weekdays_only: true, info: 무료 · 최대 2시간 · 평일만 }
-          - { garage_id: 25, name: 101호 앞, garage_type: PILOTI_OUT, building: { id: 8, name: 푸른빌라 }, title: 푸른빌라 101호 앞, availability: UNAVAILABLE, shared_slot_count: 1, min_hourly_price: 1, info: 현재 이용 불가 }
+          - { garage_id: 4, building_name: 햇살빌라, slot_id: 2102, slot_label: 골목 2번, title: 햇살빌라 · 골목 2번, availability: AVAILABLE, hourly_price: 2, info: 지금 이용 가능 · 07:00~23:00 }
+          - { garage_id: 5, building_name: 초록빌라, slot_id: 2201, slot_label: 건물 앞 1번, title: 초록빌라 · 건물 앞 1번, availability: SOON_EXIT, hourly_price: 2, estimated_free_at: "2026-09-30T15:30:00+09:00", estimate_source: AI_ESTIMATED }
+          - { garage_id: 6, building_name: 미래빌라, slot_id: 2305, slot_label: 필로티 안쪽 5번, title: 미래빌라 · 필로티 안쪽 5번, availability: RESERVABLE, hourly_price: 1, available_from: "2026-10-01T09:00:00+09:00", info: 내일 09:00부터 이용 가능 }
+          - { garage_id: 7, building_name: 하늘빌라, slot_id: 2403, slot_label: 필로티 외부 3번, title: 하늘빌라 · 필로티 외부 3번, availability: AVAILABLE, hourly_price: 0, max_hours: 2, weekdays_only: true, info: 무료 · 최대 2시간 · 평일만 }
+          - { garage_id: 8, building_name: 푸른빌라, slot_id: 2501, slot_label: 건물 앞 1번, title: 푸른빌라 · 건물 앞 1번, availability: UNAVAILABLE, hourly_price: 1, info: 현재 이용 불가 }
         next_cursor: null
     ShareOfferSummary:
       type: object
@@ -1868,43 +1879,46 @@ components:
         memo: { type: [string, "null"] }
     GarageDetail:
       type: object
+      description: 차고지 = 빌라의 주차장
       properties:
-        id: { type: integer }
-        name: { type: string }
-        garage_type: { $ref: "#/components/schemas/GarageType" }
-        building:
-          type: object
-          properties:
-            id: { type: integer }
-            name: { type: string }
-            address: { type: string }
+        id: { type: integer, description: 차고지 id = 빌라 id }
+        name: { type: string, description: 빌라 이름 }
+        address: { type: string, description: 빌라 주소 }
         alley: { $ref: "#/components/schemas/AlleyRef" }
+        summary:
+          type: object
+          description: 공유 칸들의 조건을 모은 값 (화면 윗부분)
+          properties:
+            start_hour: { $ref: "#/components/schemas/Hour" }
+            end_hour: { $ref: "#/components/schemas/Hour" }
+            min_hourly_price: { type: integer, description: "시간당 토큰 중 가장 싼 값. 0 = 무료" }
+            max_hours: { type: [integer, "null"], description: 가장 긴 최대 이용 시간. null = 제한 없음 }
         slots:
           type: array
+          description: 공유 중인 칸 (여러 주차 구역)
           items:
             type: object
             properties:
               slot_id: { type: integer }
+              zone: { type: object, properties: { id: { type: integer }, name: { type: string } }, description: "주차 구역 (DB garages)" }
               number: { type: integer }
-              label: { type: string }
+              label: { type: string, description: 주차 구역 이름 + 번호 }
               state: { $ref: "#/components/schemas/GarageSlotState" }
               estimated_free_at: { type: [string, "null"], format: date-time }
               in_use_until: { type: [string, "null"], format: date-time }
-              offer:
-                oneOf: [{ $ref: "#/components/schemas/ShareOfferSummary" }, { type: "null" }]
-                description: 오늘 적용되는 공개 공유 조건. null 이면 공유하지 않는 칸
+              offer: { $ref: "#/components/schemas/ShareOfferSummary" }
       example:
-        id: 21
-        name: 101동 차고지
-        garage_type: PILOTI_IN
-        building: { id: 4, name: 햇살빌라, address: 서울특별시 노원구 광운로19가길 20 }
+        id: 4
+        name: 햇살빌라
+        address: 서울특별시 노원구 광운로19가길 20
         alley: { id: 1, name: 광운로19가길 }
+        summary: { start_hour: 7, end_hour: 23, min_hourly_price: 2, max_hours: 4 }
         slots:
-          - { slot_id: 2101, number: 1, label: 101동 차고지 1번, state: AVAILABLE, offer: { id: 501, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2102, number: 2, label: 101동 차고지 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T15:00:00+09:00", offer: { id: 502, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2103, number: 3, label: 101동 차고지 3번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2104, number: 4, label: 101동 차고지 4번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2105, number: 5, label: 101동 차고지 5번, state: AVAILABLE, offer: { id: 505, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2101, zone: { id: 21, name: 골목 }, number: 1, label: 골목 1번, state: AVAILABLE, offer: { id: 501, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2102, zone: { id: 21, name: 골목 }, number: 2, label: 골목 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T14:30:00+09:00", offer: { id: 502, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2103, zone: { id: 22, name: 필로티 외부 }, number: 1, label: 필로티 외부 1번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2104, zone: { id: 22, name: 필로티 외부 }, number: 2, label: 필로티 외부 2번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2105, zone: { id: 23, name: 건물 앞 }, number: 1, label: 건물 앞 1번, state: AVAILABLE, offer: { id: 505, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
     ShareRequestCreate:
       type: object
       required: [offer_id, request_date, start_hour, end_hour]
@@ -1928,10 +1942,10 @@ components:
         reject_reason: { type: [string, "null"] }
         garage:
           type: object
+          description: 차고지 (= 빌라)
           properties:
             id: { type: integer }
-            name: { type: string }
-            building_name: { type: string }
+            name: { type: string, description: 빌라 이름 }
         slot_id: { type: integer }
         slot_label: { type: string }
         request_date: { type: string, format: date }
@@ -2044,30 +2058,36 @@ components:
       type: object
       properties:
         slot_id: { type: integer }
-        garage_id: { type: integer }
+        zone_id: { type: integer, description: 주차 구역 id (DB garages.id) }
         number: { type: integer }
         label: { type: string }
         is_active: { type: boolean, description: 끄면 배치도에서 선택 불가 (DB 는 삭제 대신 비활성화) }
         occupied: { type: boolean }
         share_offer_id: { type: [integer, "null"], description: 지금 적용되는 공유 조건. 없으면 null }
-    ShareOfferCreate:
+    ShareOfferFields:
       type: object
-      required: [slot_id, start_hour, end_hour]
-      description: 시작일·종료일 입력은 없습니다. 서버가 `start_date` = 등록일, `end_date` = 9999-12-31 (무기한) 로 저장하고 응답에는 내보내지 않습니다.
+      description: 공유 조건 공통 필드. 시작일·종료일 입력은 없습니다 (서버가 `start_date` = 등록일, `end_date` = 9999-12-31 무기한 으로 저장)
+      required: [start_hour, end_hour]
       properties:
-        slot_id: { type: integer, description: 이 빌라의 활성 칸 }
         weekdays:
           type: array
           items: { $ref: "#/components/schemas/Weekday" }
-          description: 생략하면 매일
+          description: "생략하면 매일. Figma 의 요일 칩(여러 개 선택)"
         start_hour: { $ref: "#/components/schemas/Hour" }
         end_hour: { $ref: "#/components/schemas/Hour" }
         hourly_price: { type: integer, minimum: 0, default: 0, description: "시간당 토큰. 0 이면 무료" }
         max_hours: { type: [integer, "null"], minimum: 1, description: 요청 1건 최대 시간. null = 제한 없음 }
         memo: { type: [string, "null"], description: 이용자에게 전달할 사항 }
         is_public: { type: boolean, default: true, description: false = 공유 중단 }
+    ShareOfferCreate:
+      allOf:
+        - $ref: "#/components/schemas/ShareOfferFields"
+        - type: object
+          required: [slot_ids]
+          properties:
+            slot_ids: { type: array, minItems: 1, items: { type: integer }, description: 공유할 칸 (이 빌라의 활성 칸) }
       example:
-        slot_id: 1003
+        slot_ids: [1003, 1007]
         weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
         start_hour: 7
         end_hour: 23
@@ -2077,11 +2097,12 @@ components:
         is_public: true
     ShareOffer:
       allOf:
-        - $ref: "#/components/schemas/ShareOfferCreate"
+        - $ref: "#/components/schemas/ShareOfferFields"
         - type: object
-          required: [id]
+          required: [id, slot_id]
           properties:
             id: { type: integer }
+            slot_id: { type: integer }
             slot_label: { type: string }
             host_id: { type: integer, description: 공유를 연 관리인. 수락된 요청의 토큰을 받음 }
       example:
