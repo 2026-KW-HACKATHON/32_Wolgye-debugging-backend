@@ -6,8 +6,9 @@ info:
     빌라 골목 주차 공유 앱 **차곡차곡**의 API 명세(v0.2)입니다. 프런트가 서버 없이 화면을 만들 수 있도록 **예시 값은 모두 가짜(Mock) 데이터**로 채웠습니다.
 
     ### 기준 문서
-    - Notion "차곡차곡 API 명세 v0.2" (엔드포인트·필드·에러 코드)
-    - Manyfast 와이어프레임 23개 화면 (문구·선택지·화면 흐름). 화면 번호 #1~#23 은 Notion 의 "화면 → API 매핑" 번호와 같습니다.
+    - **Manyfast 명세·와이어프레임 23개 화면이 기준**입니다 (문구·선택지·화면 흐름). Figma "월계디버깅 / 와이어프레임" 페이지는 같은 화면의 최신본이라 함께 대조했습니다.
+    - Notion "차곡차곡 API 명세 v0.2" 는 **임시 API 명세**입니다 (엔드포인트·필드·에러 코드 초안). Manyfast 와 다르면 Manyfast 를 따릅니다. 화면 번호 #1~#23 은 Notion 의 "화면 → API 매핑" 번호와 같습니다.
+    - **DB 에 저장할 곳이 없는 기능은 API 로 만들지 않습니다** (알림 설정, Web Push 구독, 로그아웃, 공유 요청 취소, 미확인 차량 메모, 긴급 이동 요청 등).
 
     - 현재 DB 스키마 (`app/models/`). 아래 네 가지는 Notion v0.2 대신 **DB 를 따릅니다**.
 
@@ -39,7 +40,7 @@ info:
     | 골목 1 | 광운로19가길. 빌라 3(월계 한빛빌라)과 빌라 4(햇살빌라)가 속함 |
     | 사용자 1 | 김지수 · 월계 한빛빌라 101동 202호 입주민 · 차량 7 (`12가 3456` 흰색, 대표) · 보유 토큰 30 |
     | 사용자 2 | 박OO · 한빛빌라 관리인 |
-    | 사용자 3 | 302호 이웃 · 차량 `34나 5678` (지수 차량을 막고 있음) |
+    | 사용자 3 | 101동 302호 이웃 · 차량 `34나 5678` (지수 차량을 막고 있음). 다른 입주민에게는 호수 대신 칸 이름·동까지만 보임 |
     | 빌라 3 | 월계 한빛빌라, 초대코드 `HANBIT01`. 차고지 4개, 칸 8개: 차고지 10 필로티 안쪽(1·2) / 11 필로티 외부(1) / 12 건물 앞(1·2·3) / 13 골목(1·2) |
     | 빌라 3 공유 조건 | 401 (필로티 외부 1번), 402 (골목 1번). 07~23시, 시간당 2토큰, 최대 4시간 |
     | 빌라 4 | 햇살빌라. 차고지 21 "101동 차고지" 칸 2101~2105, 공유 조건 501~505 (시간당 2토큰, 최대 4시간) |
@@ -51,26 +52,33 @@ info:
     - 차고지 등록(#20)의 "최대 이용 시간: 제한 없음" 은 `max_hours: null`
     - 요일 프리셋(매일·평일·주말·월~금·토~일)은 FE 에서 `weekdays` 배열로 변환
     - 화면의 "○○원" 표기는 토큰으로 바꿔야 합니다 (#13, #14, #20)
+    - 이동 요청에 긴급 구분이 없습니다. 이동 요청 수신 화면(#12)의 "긴급 이동 요청" 문구는 일반 "이동 요청" 으로 봅니다
+    - 알림 종류는 와이어프레임에 나오는 5가지(막힘·이동 요청·출차 완료·공유 사용 요청·공유 결과)만 둡니다. 전날 밤 사전 알림은 막힘 알림(`BLOCK_ALERT`)에 포함
+    - 차고지 등록(#20)의 시간 선택지는 정시 단위, 시작일·종료일 입력은 없음 (등록한 날부터 무기한, 중단은 `is_public=false`)
+    - 이동 요청·막힘 관련 화면과 알림은 익명입니다. 호수·이름 대신 동(`101동 입주민`)이나 칸 이름(`필로티 안쪽 2번 차량`)으로 표시
+    - 사용 불가 안내 모달(#11)의 사유는 `관리인이 사용 중지한 칸` 또는 `예약된 상태` (Figma)
 
     ### 열린 질문 — Mock 에서 임시로 정한 값
     | # | 내용 | Mock 에서의 처리 |
     |---|---|---|
     | 1 | 홈 요약 칩 정의 (14-1) | 빈칸=비어 있는 칸, 가능=빈칸+1시간 내 출차, 막힘=막힌 입주민 차량 수 (제안안) |
-    | 2 | 칸 이름 규칙 (14-2) | `차고지 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. 와이어프레임의 `A-1 구역`, `C-1 · 골목 후면` 형식과 다름 |
+    | 2 | 칸 이름 규칙 (14-2) | `차고지 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. Figma 최신본은 이 형식을 씀. Manyfast 의 `A-1 구역`, `C-1 · 골목 후면` 표기는 옛 형식 |
     | 3 | 차량 색상 입력 (14-3) | 색상·별칭 모두 선택 |
     | 4 | 공유 요청 시간 입력 화면 없음 (14-4) | 요청 본문에 `request_date`, `start_hour`, `end_hour` 를 받음 |
-    | 5 | 요금 단위 (14-5) | 시간당 토큰 `hourly_price`. 화면의 "30분당" 표기는 정시 단위 DB 와 맞지 않음 |
-    | 6 | 탐색 목록 단위 (14-6) | 차고지 단위. 공개된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 노출 |
-    | 7 | 온보딩 3단계 중 3단계 (14-7) | 미정. `onboarding_step` 은 JOIN_BUILDING → REGISTER_VEHICLE → DONE |
+    | 5 | 요금 단위 (14-5) | 시간당 토큰 `hourly_price`. Figma 최신본은 "시간당" 으로 고쳐져 있음 (Manyfast 차고지 상세의 "30분당" 은 옛 표기) |
+    | 6 | 탐색 목록 단위 (14-6) | 차고지 단위. 공개된 공유 조건이 있는 칸을 하나 이상 가진 차고지만 노출. ⚠️ Figma 최신본은 목록 항목이 칸 단위("햇살빌라 · 골목 2번")이고, 차고지 상세 한 화면에 여러 차고지의 칸(골목·필로티 외부·건물 앞)이 함께 나옴 → "차고지 = 빌라의 공유 칸 묶음" 으로 읽힘. DB(`garages` = 빌라 안의 주차 공간)와 맞출지 결정 필요 |
+    | 7 | 온보딩 단계 (14-7) | Figma 최신본은 2단계(건물 합류 → 차량 등록)라 해결됨. `onboarding_step` 은 JOIN_BUILDING → REGISTER_VEHICLE → DONE |
     | 8 | 연락처 비노출 (14-9) vs 기존 "비노출 대상 아님" 기획 결정 | 본인에게만 마스킹 응답, 타인에겐 미제공 |
     | 9 | 와이어프레임 데이터 불일치 | 김지수 동·호수 #10 은 203호, #23 은 202호 → **202호** 사용 |
-    | 10 | 와이어프레임 화면 링크 끊김 | 알림 목록(n26), 가입 완료(n7), 옮겼어요 완료(n31), 역할 안내(n54), 알림 설정(n55) 화면이 아직 없음 |
+    | 10 | 와이어프레임 화면 링크 끊김 | 알림 목록(n26), 가입 완료(n7), 옮겼어요 완료(n31), 역할 안내(n54), 알림 설정(n55) 화면이 아직 없음. 알림 설정은 DB 에 저장할 곳이 없어 API 도 없음 |
     | 11 | 정의되지 않은 에러 코드 | `PLATE_EXISTS`, `ALREADY_DECIDED`, `MOVE_REQUEST_ALREADY_PENDING`, `ALREADY_IN_BUILDING`, `INSUFFICIENT_TOKENS` 를 **제안**으로 추가 |
     | 12 | 차고지 등록 화면(#20)이 DB 와 다름 | 화면은 이름·상세 위치를 입력하고 칸을 여러 개 고르지만, DB 의 공유 조건은 칸 하나당 하나이고 이름·위치 컬럼이 없음 → **칸마다 한 번씩 등록**, 이름·위치 입력은 뺌 |
-    | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`·`unavailable_reason`, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
+    | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`(칸 설정 모달 #19 의 "공유 가능" 토글)·`unavailable_reason`, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
     | 14 | 빌라 이동·탈퇴 | 한 빌라에만 소속되므로 이사하면 기존 빌라에서 나가야 하는데 그 API·화면이 없음 |
     | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. 지급 방법(가입 시 지급 등) 미정 |
-    | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`)·`CANCELED`·`COMPLETED`(DB 에 없음), 이동 요청 `DONE`(DB `MOVED`), 대표 차량 `is_default`(DB `is_primary`) — Notion 이름을 유지함 |
+    | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
+    | 17 | 알림 종류가 DB 와 다름 | 명세는 와이어프레임 기준 5종. DB `notification_type` 마이그레이션 필요 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
+    | 18 | 공유 기간 vs 요구사항 | Manyfast 요구사항 R-UWUBSH 는 "이용 가능 **날짜**·시간" 을 등록한다고 하지만 화면에 날짜 입력이 없어 무기한으로 처리 |
 servers:
   - url: http://localhost:8000/api/v1
     description: 로컬
@@ -78,7 +86,7 @@ security:
   - bearerAuth: []
 tags:
   - { name: auth, description: "인증 (#2 계정 만들기, #3 로그인)" }
-  - { name: users, description: "프로필·알림 설정 (#23)" }
+  - { name: users, description: "프로필 (#23)" }
   - { name: buildings, description: "건물 합류(#4), 배치도·실시간 현황(#6). 한 사용자는 한 빌라에만 소속" }
   - { name: home, description: "홈 집계 (#6)" }
   - { name: vehicles, description: "차량 등록·관리·상세 (#5, #10, #22), 반복 출차 일정 (#9)" }
@@ -87,7 +95,7 @@ tags:
   - { name: garages, description: "공유 주차 탐색·차고지 상세 (#13, #14). 같은 골목의 다른 빌라 차고지" }
   - { name: share-requests, description: "공유 요청과 결과 확인 (#15~#17). 이용료는 토큰" }
   - { name: admin, description: "관리인 (#18~#21), 🛠 해당 빌라 관리인만" }
-  - { name: notifications, description: "알림 목록·푸시 (알림 탭, 화면 미작성)" }
+  - { name: notifications, description: "알림 목록 (알림 탭, 화면 미작성)" }
   - { name: health, description: 상태 확인 }
 
 paths:
@@ -173,15 +181,6 @@ paths:
                   refresh_token: { type: string }
               example: { access_token: eyJhbGciOiJIUzI1NiJ9.access2, refresh_token: eyJhbGciOiJIUzI1NiJ9.refresh2 }
         "401": { $ref: "#/components/responses/Unauthorized" }
-  /auth/logout:
-    post:
-      tags: [auth]
-      summary: 👤 로그아웃
-      operationId: logout
-      x-priority: 1주차
-      responses:
-        "204": { description: 로그아웃됨 }
-        "401": { $ref: "#/components/responses/Unauthorized" }
   /auth/password-reset:
     post:
       tags: [auth]
@@ -235,37 +234,6 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UserMe" }
-        "400": { $ref: "#/components/responses/InvalidInput" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-  /users/me/notification-settings:
-    get:
-      tags: [users]
-      summary: 👤 알림 설정 조회 (#23 → 알림 설정)
-      operationId: getNotificationSettings
-      x-priority: 2주차
-      responses:
-        "200":
-          description: 알림 설정
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/NotificationSettings" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-    patch:
-      tags: [users]
-      summary: 👤 알림 설정 변경
-      operationId: updateNotificationSettings
-      x-priority: 2주차
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/NotificationSettings" }
-      responses:
-        "200":
-          description: 변경됨
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/NotificationSettings" }
         "400": { $ref: "#/components/responses/InvalidInput" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -623,7 +591,7 @@ paths:
       description: |
         - `is_long_term=true`(상시 주차) 면 `expected_exit_at` 을 생략할 수 있습니다
         - `repeat_weekdays=true`(평일 반복) 면 평일(월~금) 같은 시각으로 반복 일정을 함께 만듭니다. 요일을 직접 고르려면 #9 API 사용
-        - 사용 불가 칸 → 409 `SLOT_UNAVAILABLE` + `detail.reason` → **사용 불가 안내 모달(#11)**
+        - 사용 불가 칸 → 409 `SLOT_UNAVAILABLE` + `detail.reason` → **사용 불가 안내 모달(#11)**. 사유는 `관리인이 사용 중지한 칸`(`is_active=false`) 또는 `예약된 상태`(그 시간에 수락된 공유 요청이 있음)
         - 동시성: 해당 칸과 앞·뒤 칸을 `SELECT ... FOR UPDATE` 로 잠근 뒤 재검증
       operationId: createParking
       x-priority: 1주차
@@ -657,7 +625,7 @@ paths:
               examples:
                 unavailable:
                   summary: 사용 불가 칸 (#11 모달)
-                  value: { error: { code: SLOT_UNAVAILABLE, message: 해당 칸을 사용할 수 없습니다., detail: { reason: 선택한 주차 칸은 현재 사용이 불가합니다. 다른 칸을 선택해 주세요. } } }
+                  value: { error: { code: SLOT_UNAVAILABLE, message: 해당 칸을 사용할 수 없습니다., detail: { reason: 예약된 상태 } } }
                 occupied:
                   value: { error: { code: SLOT_OCCUPIED, message: 이미 다른 차량이 주차 중인 칸입니다., detail: null } }
                 alreadyParked:
@@ -733,6 +701,7 @@ paths:
         관리인은 외부 차량(`EXTERNAL`)에도 요청할 수 있습니다.
         `UNKNOWN` 차량은 연락 수단이 없어("앱으로 연락 불가") 400 입니다.
         같은 차에 대기 중인 요청이 있으면 409 (제안 코드).
+        긴급 여부는 따로 두지 않습니다. 수신자에게는 일반 `MOVE_REQUEST` 알림이 갑니다.
       operationId: createMoveRequest
       x-priority: 2주차
       requestBody:
@@ -746,12 +715,10 @@ paths:
                 target_parking_id: { type: integer, description: 이동을 요청할 차량의 주차 건 }
                 needed_at: { type: string, format: date-time, description: 출차가 필요한 시각 }
                 reason: { type: [string, "null"] }
-                is_urgent: { type: boolean, default: false }
             example:
               target_parking_id: 555
               needed_at: "2026-09-30T15:00:00+09:00"
               reason: 외출 예정으로 출차가 필요합니다.
-              is_urgent: true
       responses:
         "201":
           description: 요청됨
@@ -801,7 +768,7 @@ paths:
     post:
       tags: [move-requests]
       summary: 🏠 "옮겼어요" (#12)
-      description: 요청자에게 알림을 보내고, 응답 시간은 차곡이 온도에 반영합니다.
+      description: 요청 상태를 `MOVED` 로 바꿉니다. 응답 시간은 차곡이 온도에 반영합니다. 와이어프레임에 요청자용 결과 알림이 없어 알림은 보내지 않습니다 (요청자 홈의 막힘 카드가 사라짐).
       operationId: doneMoveRequest
       x-priority: 2주차
       parameters:
@@ -817,15 +784,15 @@ paths:
                   id: { type: integer }
                   status: { $ref: "#/components/schemas/MoveRequestStatus" }
                   responded_at: { type: string, format: date-time }
-              example: { id: 44, status: DONE, responded_at: "2026-09-30T14:41:00+09:00" }
+              example: { id: 44, status: MOVED, responded_at: "2026-09-30T14:41:00+09:00" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: 이미 처리됐거나 만료됨 (제안 코드)
+          description: 이미 처리된 요청 (제안 코드)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              example: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: EXPIRED } } }
+              example: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: MOVED } } }
   /me/move-requests:
     get:
       tags: [move-requests]
@@ -854,13 +821,12 @@ paths:
                       properties:
                         id: { type: integer }
                         status: { $ref: "#/components/schemas/MoveRequestStatus" }
-                        is_urgent: { type: boolean }
                         requested_at: { type: string, format: date-time }
                         counterpart_label: { type: string, description: 상대방 표기 (동까지만) }
                         needed_at: { type: string, format: date-time }
               example:
                 items:
-                  - { id: 44, status: PENDING, is_urgent: true, requested_at: "2026-09-30T14:34:00+09:00", counterpart_label: 101동 입주민, needed_at: "2026-09-30T15:00:00+09:00" }
+                  - { id: 44, status: PENDING, requested_at: "2026-09-30T14:34:00+09:00", counterpart_label: 101동 입주민, needed_at: "2026-09-30T15:00:00+09:00" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ───────────────────────── 공유 주차 (이용자) ─────────────────────────
@@ -918,7 +884,7 @@ paths:
         공유 조건(`offer_id`) 하나에 날짜와 정시 단위 시간을 골라 요청합니다.
         - 이용료: `total_price = (end_hour - start_hour) × offer.hourly_price` **토큰**. 요청 시점 가격으로 고정됩니다
         - 요청 시 보유 토큰이 모자라면 409 `INSUFFICIENT_TOKENS`. **토큰은 수락될 때 빠져나갑니다** (요청만으로는 차감 없음)
-        - 검증: 공유 기간·요일·운영시간·`max_hours` 이내여야 하고(400), 수락된 다른 요청과 시간이 겹치면 409 `GARAGE_TIME_CONFLICT`
+        - 검증: 요일·운영시간·`max_hours` 이내여야 하고(400), 수락된 다른 요청과 시간이 겹치면 409 `GARAGE_TIME_CONFLICT`
         - 내가 연 공유 조건에는 요청할 수 없습니다 (400)
         - 관리인에게 `SHARE_REQUEST` 알림이 갑니다
 
@@ -943,7 +909,7 @@ paths:
                   total_price: { type: integer, description: 토큰 }
               example: { id: 301, status: PENDING, total_price: 6 }
         "400":
-          description: 공유 기간·운영시간·요일·최대 이용 시간 위반
+          description: 운영시간·요일·최대 이용 시간 위반
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1011,33 +977,6 @@ paths:
                 items:
                   - { id: 301, status: PENDING, reject_reason: null, garage: { id: 21, name: 101동 차고지, building_name: 햇살빌라 }, slot_id: 2101, slot_label: 101동 차고지 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
         "401": { $ref: "#/components/responses/Unauthorized" }
-  /share-requests/{share_request_id}/cancel:
-    post:
-      tags: [share-requests]
-      summary: 👤 공유 요청 취소
-      operationId: cancelShareRequest
-      x-priority: 2주차
-      parameters:
-        - { $ref: "#/components/parameters/ShareRequestId" }
-      responses:
-        "200":
-          description: 취소됨
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id: { type: integer }
-                  status: { $ref: "#/components/schemas/ShareRequestStatus" }
-              example: { id: 301, status: CANCELED }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: 이미 처리된 요청 (제안 코드)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-              example: { error: { code: ALREADY_DECIDED, message: 이미 처리된 요청입니다., detail: { status: APPROVED } } }
 
   # ───────────────────────── 관리인 ─────────────────────────
   /admin/buildings/{building_id}/dashboard:
@@ -1217,8 +1156,8 @@ paths:
                     items: { $ref: "#/components/schemas/ShareOffer" }
               example:
                 items:
-                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
-                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
     post:
@@ -1228,7 +1167,8 @@ paths:
         화면 이름은 "차고지 등록" 이지만 DB 에서는 **칸 하나에 공유 조건을 거는 것**(`share_offers`)입니다. 차고지 자체(`garages`)는 운영팀이 미리 등록합니다.
         - 칸을 여러 개 공유하려면 **칸마다 한 번씩** 호출합니다
         - `host` 는 호출한 관리인이며, 수락된 요청의 토큰을 받습니다
-        - 와이어프레임 입력 중 가용 시간(시작·종료, 정시 단위), 요일, 시간당 요금(0이면 무료), 최대 이용 시간(제한 없음 = `null`), 메모, 공개 여부를 받습니다. 이름·상세 위치 안내는 DB 에 없어 받지 않습니다 (열린 질문 #12)
+        - 와이어프레임 입력 중 가용 시간(시작·종료, **정시 단위**), 요일, 시간당 요금(0이면 무료), 최대 이용 시간(제한 없음 = `null`), 메모, 공개 여부를 받습니다. 이름·상세 위치 안내는 DB 에 없어 받지 않습니다 (열린 질문 #12)
+        - 시작일·종료일 입력은 없습니다. 등록하면 그날부터 무기한 공유되고, 멈추려면 `is_public=false` 로 바꿉니다
         - 비활성(`is_active=false`) 칸이나 다른 빌라의 칸이면 400
       operationId: createAdminShareOffer
       x-priority: 2주차
@@ -1310,8 +1250,7 @@ paths:
               properties:
                 slot_id: { type: integer }
                 plate: { type: string }
-                memo: { type: [string, "null"] }
-            example: { slot_id: 1006, plate: 45다6789, memo: 앱 미가입 }
+            example: { slot_id: 1006, plate: 45다6789 }
       responses:
         "201":
           description: 등록됨
@@ -1371,32 +1310,6 @@ paths:
       x-priority: 1주차
       responses:
         "204": { description: 모두 읽음 처리됨 }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-  /me/push-subscriptions:
-    post:
-      tags: [notifications]
-      summary: 👤 Web Push 구독
-      operationId: createPushSubscription
-      x-priority: 2주차
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [endpoint, keys]
-              properties:
-                endpoint: { type: string, format: uri }
-                keys:
-                  type: object
-                  properties:
-                    p256dh: { type: string }
-                    auth: { type: string }
-            example:
-              endpoint: https://fcm.googleapis.com/fcm/send/abc123
-              keys: { p256dh: BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA, auth: tBHItJI5svbpez7KI4CCXg }
-      responses:
-        "201": { description: 구독됨 }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /health:
@@ -1543,13 +1456,18 @@ components:
       description: 직접 / 반복 / AI 추정(향후) / 없음(상시 주차 등)
     ParkingState: { type: string, enum: [PARKED, EXITED], description: "Notion Enum 표에 없어 Mock 에서 정의" }
     VehicleStatus: { type: string, enum: [PARKED, OUT], description: "PARKED 주차 중 / OUT 외부 출차. Notion Enum 표에 없어 Mock 에서 정의" }
-    MoveRequestStatus: { type: string, enum: [PENDING, DONE, EXPIRED, CANCELED] }
+    MoveRequestStatus: { type: string, enum: [PENDING, MOVED, DECLINED], description: "DB move_request_status 와 같음. MOVED = 옮겼어요, DECLINED 는 화면 없음" }
     GarageAvailability: { type: string, enum: [AVAILABLE, SOON_EXIT, RESERVABLE, UNAVAILABLE] }
     GarageSlotState: { type: string, enum: [AVAILABLE, SOON_EXIT, IN_USE], description: "차고지 상세(#14) 칸 상태. Notion Enum 표에 없어 Mock 에서 정의" }
-    ShareRequestStatus: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED, COMPLETED] }
+    ShareRequestStatus: { type: string, enum: [PENDING, APPROVED, REJECTED], description: "DB 는 PENDING / ACCEPTED / REJECTED" }
     NotificationType:
       type: string
-      enum: [BLOCK_ALERT, MOVE_REQUEST, EXIT_DONE, NIGHT_BEFORE, SHARE_REQUEST, SHARE_RESULT]
+      enum: [BLOCK_ALERT, MOVE_REQUEST, EXIT_DONE, SHARE_REQUEST, SHARE_RESULT]
+      description: |
+        와이어프레임에 나오는 알림만 둡니다.
+        `BLOCK_ALERT` 막힘 알림(전날 밤 사전 알림 포함, 홈 막힘 카드) · `MOVE_REQUEST` 이동 요청 도착 ·
+        `EXIT_DONE` 출차 완료 안내 · `SHARE_REQUEST` 공유 사용 요청(관리인) · `SHARE_RESULT` 공유 요청 수락/거절 결과.
+        ⚠️ DB `notification_type` 은 아직 `DEPARTURE_REMINDER / SHARE_REQUEST / SHARE_RESPONSE / MOVE_REQUEST / MOVE_RESPONSE` 라 마이그레이션 필요
     VehicleColor: { type: string, enum: [검정, 흰색, 은색, 회색, 파랑, 빨강, 기타] }
 
     # ── 인증 · 사용자 ──
@@ -1621,25 +1539,6 @@ components:
         unit: { type: string }
         phone: { type: string }
       example: { name: 김지수, unit: 101동 202호, phone: 010-1234-5678 }
-    NotificationSettings:
-      type: object
-      properties:
-        block_alert: { type: boolean }
-        move_request: { type: boolean }
-        night_before: { type: boolean }
-        share: { type: boolean }
-        quiet_hours:
-          type: object
-          properties:
-            enabled: { type: boolean }
-            from: { $ref: "#/components/schemas/TimeOfDay" }
-            to: { $ref: "#/components/schemas/TimeOfDay" }
-      example:
-        block_alert: true
-        move_request: true
-        night_before: true
-        share: true
-        quiet_hours: { enabled: true, from: "23:00", to: "06:00" }
 
     # ── 배치도 · 현황 · 홈 ──
     BuildingLayout:
@@ -1797,10 +1696,10 @@ components:
           slot_label: 필로티 안쪽 1번
           state: PARKED
           expected_exit_at: "2026-09-30T18:30:00+09:00"
-        block_alert: { blocking_parking_id: 555, message: 내 차량이 302호 차량에 의해 막혀 있습니다. }
+        block_alert: { blocking_parking_id: 555, message: 내 차량이 필로티 안쪽 2번 차량에 의해 막혀 있습니다. }
         admin: null
         recent_notifications:
-          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 201호 김민준, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 101동 입주민, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
           - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: false, created_at: "2026-09-30T14:30:00+09:00" }
 
     # ── 차량 ──
@@ -1899,7 +1798,6 @@ components:
       properties:
         id: { type: integer }
         status: { $ref: "#/components/schemas/MoveRequestStatus" }
-        is_urgent: { type: boolean }
         requested_at: { type: string, format: date-time }
         requester: { type: object, properties: { label: { type: string } } }
         my_vehicle:
@@ -1918,7 +1816,6 @@ components:
       example:
         id: 44
         status: PENDING
-        is_urgent: true
         requested_at: "2026-09-30T14:34:00+09:00"
         requester: { label: 101동 입주민 }
         my_vehicle: { plate: 34나 5678, slot_label: 필로티 안쪽 2번, parked_at: "2026-09-30T12:10:00+09:00" }
@@ -1963,8 +1860,6 @@ components:
       description: 칸에 걸린 공유 조건 (DB share_offers)
       properties:
         id: { type: integer }
-        start_date: { type: string, format: date }
-        end_date: { type: string, format: date, description: 포함 }
         weekdays: { type: array, items: { $ref: "#/components/schemas/Weekday" } }
         start_hour: { $ref: "#/components/schemas/Hour" }
         end_hour: { $ref: "#/components/schemas/Hour" }
@@ -2005,11 +1900,11 @@ components:
         building: { id: 4, name: 햇살빌라, address: 서울특별시 노원구 광운로19가길 20 }
         alley: { id: 1, name: 광운로19가길 }
         slots:
-          - { slot_id: 2101, number: 1, label: 101동 차고지 1번, state: AVAILABLE, offer: { id: 501, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2102, number: 2, label: 101동 차고지 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T15:00:00+09:00", offer: { id: 502, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2103, number: 3, label: 101동 차고지 3번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2104, number: 4, label: 101동 차고지 4번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2105, number: 5, label: 101동 차고지 5번, state: AVAILABLE, offer: { id: 505, start_date: "2026-09-01", end_date: "2026-12-31", weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2101, number: 1, label: 101동 차고지 1번, state: AVAILABLE, offer: { id: 501, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2102, number: 2, label: 101동 차고지 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T15:00:00+09:00", offer: { id: 502, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2103, number: 3, label: 101동 차고지 3번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2104, number: 4, label: 101동 차고지 4번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2105, number: 5, label: 101동 차고지 5번, state: AVAILABLE, offer: { id: 505, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
     ShareRequestCreate:
       type: object
       required: [offer_id, request_date, start_hour, end_hour]
@@ -2157,11 +2052,10 @@ components:
         share_offer_id: { type: [integer, "null"], description: 지금 적용되는 공유 조건. 없으면 null }
     ShareOfferCreate:
       type: object
-      required: [slot_id, start_date, end_date, start_hour, end_hour]
+      required: [slot_id, start_hour, end_hour]
+      description: 시작일·종료일 입력은 없습니다. 서버가 `start_date` = 등록일, `end_date` = 9999-12-31 (무기한) 로 저장하고 응답에는 내보내지 않습니다.
       properties:
         slot_id: { type: integer, description: 이 빌라의 활성 칸 }
-        start_date: { type: string, format: date }
-        end_date: { type: string, format: date, description: 포함. start_date 이상 }
         weekdays:
           type: array
           items: { $ref: "#/components/schemas/Weekday" }
@@ -2174,8 +2068,6 @@ components:
         is_public: { type: boolean, default: true, description: false = 공유 중단 }
       example:
         slot_id: 1003
-        start_date: "2026-09-01"
-        end_date: "2026-12-31"
         weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
         start_hour: 7
         end_hour: 23
@@ -2197,8 +2089,6 @@ components:
         slot_id: 1003
         slot_label: 필로티 외부 1번
         host_id: 2
-        start_date: "2026-09-01"
-        end_date: "2026-12-31"
         weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
         start_hour: 7
         end_hour: 23
@@ -2210,8 +2100,6 @@ components:
       type: object
       description: 칸(slot_id)을 뺀 나머지 필드를 부분 수정
       properties:
-        start_date: { type: string, format: date }
-        end_date: { type: string, format: date }
         weekdays: { type: array, items: { $ref: "#/components/schemas/Weekday" } }
         start_hour: { $ref: "#/components/schemas/Hour" }
         end_hour: { $ref: "#/components/schemas/Hour" }
@@ -2232,7 +2120,7 @@ components:
           type: [object, "null"]
           properties:
             screen: { type: string, description: "이동할 화면 (MOVE_REQUEST, SHARE_REQUEST 등)" }
-            id: { type: integer }
+            id: { type: [integer, "null"], description: "대상 id. HOME 처럼 대상이 없는 화면이면 null" }
         is_read: { type: boolean }
         created_at: { type: string, format: date-time }
     NotificationPage:
@@ -2244,9 +2132,9 @@ components:
         next_cursor: { type: [string, "null"] }
       example:
         items:
-          - { id: 92, type: BLOCK_ALERT, title: 막힘 알림, body: 내 차량이 302호 차량에 의해 막혀 있습니다., link: { screen: HOME, id: 556 }, is_read: false, created_at: "2026-09-30T14:20:00+09:00" }
-          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 201호 김민준, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 92, type: BLOCK_ALERT, title: 막힘 알림, body: 내 차량이 필로티 안쪽 2번 차량에 의해 막혀 있습니다., link: { screen: HOME, id: null }, is_read: false, created_at: "2026-09-30T14:20:00+09:00" }
+          - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 101동 입주민, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
           - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: true, created_at: "2026-09-30T14:30:00+09:00" }
-          - { id: 85, type: NIGHT_BEFORE, title: 내일 출차 안내, body: 내일 07:30 출차하는 차량이 내 차량을 막고 있어요, link: null, is_read: true, created_at: "2026-09-29T22:30:00+09:00" }
+          - { id: 85, type: BLOCK_ALERT, title: 내일 출차 안내, body: 내 차량이 내일 07:30 출차하는 차량을 막고 있어요, link: { screen: HOME, id: null }, is_read: true, created_at: "2026-09-29T22:30:00+09:00" }
           - { id: 80, type: SHARE_RESULT, title: 공유 요청이 거절되었어요, body: 주차 구역 용량 초과, link: { screen: SHARE_REQUEST, id: 301 }, is_read: true, created_at: "2026-09-29T17:00:00+09:00" }
         next_cursor: null
