@@ -78,7 +78,7 @@ info:
     | 14 | 빌라 이동·탈퇴 | 한 빌라에만 소속되므로 이사하면 기존 빌라에서 나가야 하는데 그 API·화면이 없음 |
     | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. 지급 방법(가입 시 지급 등) 미정 |
     | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
-    | 17 | 알림 종류가 DB 와 다름 | 명세는 와이어프레임 기준 5종. DB `notification_type` 마이그레이션 필요 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
+    | 17 | 알림 종류 | 와이어프레임 기준 5종. DB 는 마이그레이션 0004 로 맞춤 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
     | 18 | 공유 기간 vs 요구사항 | Manyfast 요구사항 R-UWUBSH 는 "이용 가능 **날짜**·시간" 을 등록한다고 하지만 화면에 날짜 입력이 없어 무기한으로 처리 |
 servers:
   - url: http://localhost:8000/api/v1
@@ -1478,7 +1478,7 @@ components:
         와이어프레임에 나오는 알림만 둡니다.
         `BLOCK_ALERT` 막힘 알림(전날 밤 사전 알림 포함, 홈 막힘 카드) · `MOVE_REQUEST` 이동 요청 도착 ·
         `EXIT_DONE` 출차 완료 안내 · `SHARE_REQUEST` 공유 사용 요청(관리인) · `SHARE_RESULT` 공유 요청 수락/거절 결과.
-        ⚠️ DB `notification_type` 은 아직 `DEPARTURE_REMINDER / SHARE_REQUEST / SHARE_RESPONSE / MOVE_REQUEST / MOVE_RESPONSE` 라 마이그레이션 필요
+        DB `notification_type` 과 같음 (마이그레이션 0004)
     VehicleColor: { type: string, enum: [검정, 흰색, 은색, 회색, 파랑, 빨강, 기타] }
 
     # ── 인증 · 사용자 ──
