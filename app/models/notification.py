@@ -15,15 +15,18 @@ if TYPE_CHECKING:
 
 
 class NotificationType(enum.StrEnum):
-    DEPARTURE_REMINDER = "departure_reminder"  # 전날 밤 출차 예정 알림
-    SHARE_REQUEST = "share_request"            # 공유 요청 도착 (관리자용)
-    SHARE_RESPONSE = "share_response"          # 공유 요청 수락/거절 결과
-    MOVE_REQUEST = "move_request"              # 이동 요청 도착
-    MOVE_RESPONSE = "move_response"            # 이동 요청 응답 ("옮겼어요")
+    """Figma 와이어프레임에 나오는 알림 5종."""
+
+    BLOCK_ALERT = "block_alert"      # 막힘 알림 (전날 밤 사전 알림 포함, 홈 막힘 카드)
+    MOVE_REQUEST = "move_request"    # 이동 요청 도착
+    EXIT_DONE = "exit_done"          # 출차 완료 안내 ("건물 앞 2번 비어 있음")
+    SHARE_REQUEST = "share_request"  # 공유 사용 요청 도착 (관리인용)
+    SHARE_RESULT = "share_result"    # 공유 요청 수락/거절 결과
 
 
 class Notification(Base):
-    """전날 밤 알림, 공유 요청·이동 요청 알림. 원인 요청을 FK로 연결해 알림 탭 → 해당 화면 이동."""
+    """막힘·이동 요청·출차 완료·공유 요청 알림. 원인 요청을 FK로 연결해 알림 탭 → 해당 화면 이동.
+    막힘·출차 완료 알림은 연결할 요청이 없어 FK 가 모두 NULL 이다 (막힘은 홈으로 이동)."""
 
     __tablename__ = "notifications"
 
