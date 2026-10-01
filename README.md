@@ -15,8 +15,10 @@ DB 설계에서 남은 과제는 [`docs/db-design-issues.md`](docs/db-design-iss
 ## 폴더 구조
 ```
 app/
-├── main.py              # FastAPI 앱 생성, 라우터 등록
-├── core/config.py       # 환경 변수 설정 (pydantic-settings)
+├── main.py              # FastAPI 앱 생성, 라우터 등록, 전역 예외 핸들러(도메인 예외·IntegrityError → HTTP)
+├── core/
+│   ├── config.py        # 환경 변수 설정 (pydantic-settings)
+│   └── db_errors.py     # DB 제약 이름 → 409 응답 메시지
 ├── api/
 │   ├── deps.py          # 의존성 주입. 엔드포인트는 `db: DbSession`으로 세션을 받음
 │   └── v1/
@@ -27,7 +29,8 @@ app/
 │   ├── base.py          # Alembic용: Base와 전체 모델 노출
 │   └── session.py       # async 엔진과 세션
 ├── models/              # SQLAlchemy 모델. __init__.py에서 전체 모델을 등록
-└── schemas/             # Pydantic 요청·응답 스키마
+├── schemas/             # Pydantic 요청·응답 스키마
+└── services/            # 비즈니스 규칙·트랜잭션(commit). HTTP를 모르고 실패는 services/exceptions.py 예외로 알림
 alembic/                 # 마이그레이션 (versions/0001, 0002)
 docs/                    # 설계 문서
 tests/
@@ -112,10 +115,16 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 
 ## 개발 규칙
 - 엔드포인트에서는 DB 세션을 `db: DbSession`(`app/api/deps.py`)으로 받습니다. 기본값에 `Depends()`를 쓰는 방식은 lint(B008)에 걸립니다.
+- 라우트는 서비스(`app/services/`)를 호출만 합니다. 쿼리·규칙·`commit`은 서비스에 두고, 실패는 `HTTPException` 대신 `NotFoundError`/`ConflictError`/`ForbiddenError`로 알립니다.
+- 테스트는 매번 전체 테이블을 TRUNCATE 하므로 **이름이 `_test`로 끝나는 DB**에서만 돕니다(CI는 예외). 처음 한 번 만들고 마이그레이션합니다.
+  ```bash
+  docker exec chagok-db psql -U chagok -d postgres -c "CREATE DATABASE chagok_test"
+  DATABASE_URL_SYNC=postgresql+psycopg2://chagok:chagok@localhost:5432/chagok_test alembic upgrade head
+  ```
 - 커밋 전에 아래를 실행합니다.
   ```bash
   ruff check .      # 규칙은 pyproject.toml, 버전은 requirements-dev.txt 에 고정
-  pytest -q
+  DATABASE_URL=postgresql+asyncpg://chagok:chagok@localhost:5432/chagok_test pytest -q
   ```
 
 ## CI (`.github/workflows/ci.yml`)

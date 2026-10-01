@@ -1,31 +1,22 @@
-from fastapi import APIRouter, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter
 
 from app.api.deps import DbSession
-from app.models.building import Building
 from app.schemas.building import BuildingCreate, BuildingRead
+from app.services import buildings as building_service
 
 router = APIRouter(prefix="/buildings", tags=["buildings"])
 
 
 @router.get("", response_model=list[BuildingRead])
 async def list_buildings(db: DbSession):
-    result = await db.execute(select(Building))
-    return result.scalars().all()
+    return await building_service.list_buildings(db)
 
 
 @router.post("", response_model=BuildingRead, status_code=201)
 async def create_building(db: DbSession, payload: BuildingCreate):
-    building = Building(**payload.model_dump())
-    db.add(building)
-    await db.commit()
-    await db.refresh(building)
-    return building
+    return await building_service.create_building(db, payload)
 
 
 @router.get("/{building_id}", response_model=BuildingRead)
 async def get_building(db: DbSession, building_id: int):
-    building = await db.get(Building, building_id)
-    if not building:
-        raise HTTPException(status_code=404, detail="Building not found")
-    return building
+    return await building_service.get_building(db, building_id)
