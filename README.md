@@ -127,6 +127,8 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 ### Swagger 명세서 (Mock 데이터)
 서버나 DB 없이 API 명세를 볼 수 있습니다. **Notion "차곡차곡 API 명세 v0.2"와 Manyfast 와이어프레임(23개 화면)을 기준으로 한 설계 명세**이고, 50개 엔드포인트의 예시 요청·응답과 에러 코드를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
 
+> 📌 **Notion의 기능 명세(API 명세 v0.2)는 임시 API 명세입니다.** 기능·화면의 기준은 **Manyfast 명세(와이어프레임)** 이고, Notion 명세와 다르면 Manyfast 쪽에 맞춥니다. 엔드포인트·필드·에러 코드는 확정이 아니며, 이 Mock 명세도 최종 계약으로 보지 마세요.
+
 다만 아래 네 가지는 Notion 대신 **현재 DB 스키마(`app/models/`)를 따릅니다.**
 
 - 결제는 원이 아니라 **토큰** (`residents.token_balance`, `token_transfers`)
