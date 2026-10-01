@@ -7,15 +7,15 @@
 
 from sqlalchemy.exc import IntegrityError
 
-# 제약 이름 → 메시지. 이름은 alembic/versions/0002_init_domain_schema.py 기준.
+# 제약 이름 → 메시지. 이름은 alembic/versions/0002·0003 기준.
 CONSTRAINT_MESSAGES: dict[str, str] = {
     # UNIQUE (이름 미지정 → PostgreSQL 기본 이름)
     "buildings_invite_code_key": "이미 사용 중인 초대코드입니다.",
     "residents_email_key": "이미 가입된 이메일입니다.",
     "vehicles_plate_no_key": "이미 등록된 차량 번호입니다.",
     # UNIQUE / 부분 UNIQUE 인덱스
-    "uq_zone_name_per_building": "같은 건물에 같은 이름의 구역이 있습니다.",
-    "uq_slot_number_per_zone": "같은 구역에 같은 번호의 칸이 있습니다.",
+    "uq_garage_name_per_building": "같은 빌라에 같은 이름의 차고지가 있습니다.",
+    "uq_slot_number_per_garage": "같은 차고지에 같은 번호의 칸이 있습니다.",
     "uq_primary_vehicle_per_owner": "대표 차량은 한 대만 지정할 수 있습니다.",
     "uq_active_assignment_slot": "이 칸에는 이미 주차 중인 차가 있습니다.",
     "uq_active_assignment_vehicle": "이 차는 이미 다른 칸에 주차 중입니다.",
@@ -23,17 +23,22 @@ CONSTRAINT_MESSAGES: dict[str, str] = {
     # EXCLUDE
     "ex_share_accepted_overlap": "같은 칸에 이미 수락된 공유 시간과 겹칩니다.",
     # CHECK
-    "ck_share_time_order": "공유 시작 시각은 종료 시각보다 앞서야 합니다.",
+    "ck_share_request_hours": "공유 시간은 0~24시 사이, 시작 시가 종료 시보다 앞서야 합니다.",
+    "ck_share_request_price": "공유 이용 토큰은 0 이상이어야 합니다.",
     "ck_slot_number_positive": "칸 번호는 1 이상이어야 합니다.",
     "ck_slot_front_not_self": "자기 자신을 앞 칸으로 지정할 수 없습니다.",
     "ck_departure_weekdays": "반복 요일은 0(월)~6(일) 사이여야 합니다.",
-    "ck_garage_available_time": "이용 시작 시각은 종료 시각보다 앞서야 합니다.",
-    "ck_garage_weekdays": "이용 요일은 0(월)~6(일) 사이여야 합니다.",
-    "ck_garage_fee": "시간당 요금은 0 이상이어야 합니다.",
-    "ck_garage_max_hours": "최대 이용 시간은 0보다 커야 합니다.",
+    "ck_share_offer_dates": "공유 시작일은 종료일보다 늦을 수 없습니다.",
+    "ck_share_offer_hours": "공유 시간은 0~24시 사이, 시작 시가 종료 시보다 앞서야 합니다.",
+    "ck_share_offer_weekdays": "공유 요일은 0(월)~6(일) 사이여야 합니다.",
+    "ck_share_offer_price": "시간당 토큰은 0 이상이어야 합니다.",
+    "ck_share_offer_max_hours": "최대 이용 시간은 0보다 커야 합니다.",
     "ck_move_request_distinct_vehicles": "이동 요청 대상 차와 막힌 차가 같을 수 없습니다.",
     "ck_resident_manner_temperature": "매너 온도는 0~99.9 사이여야 합니다.",
     "ck_assignment_active_released": "배치 상태와 출차 시각이 맞지 않습니다.",
+    "ck_resident_token_balance": "토큰 잔액이 부족합니다.",
+    "ck_token_transfer_amount": "토큰은 1 이상 보낼 수 있습니다.",
+    "ck_token_transfer_distinct": "자기 자신에게 토큰을 보낼 수 없습니다.",
 }
 
 FOREIGN_KEY_VIOLATION = "23503"

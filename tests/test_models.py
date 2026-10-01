@@ -10,15 +10,17 @@ def test_mappers_configure():
     """모든 모델의 relationship/타입 표기가 해석되는지 (DB 없이) 확인."""
     configure_mappers()
     assert {
+        "alleys",
         "buildings",
-        "parking_zones",
-        "parking_slots",
         "garages",
+        "parking_slots",
         "residents",
         "vehicles",
         "parking_assignments",
         "departure_schedules",
+        "share_offers",
         "share_requests",
+        "token_transfers",
         "move_requests",
         "notifications",
     } <= set(Base.metadata.tables)

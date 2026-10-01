@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Float, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -27,6 +27,7 @@ class Resident(Base):
     __tablename__ = "residents"
     __table_args__ = (
         CheckConstraint("manner_temperature BETWEEN 0 AND 99.9", name="ck_resident_manner_temperature"),
+        CheckConstraint("token_balance >= 0", name="ck_resident_token_balance"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -46,6 +47,8 @@ class Resident(Base):
     # 매너 온도 (관리자 화면의 38.5℃ 표시). 기본 36.5.
     manner_temperature: Mapped[float] = mapped_column(Float, default=36.5, server_default="36.5")
 
+    # 보유 토큰. 공유 이용료는 토큰으로만 주고받는다 (이동 기록은 token_transfers).
+    token_balance: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     building: Mapped[Building | None] = relationship(back_populates="residents")

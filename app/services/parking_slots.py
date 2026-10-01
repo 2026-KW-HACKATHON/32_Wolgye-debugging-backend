@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.garage import Garage
 from app.models.parking_slot import ParkingSlot
-from app.models.parking_zone import ParkingZone
 from app.schemas.parking_slot import ParkingSlotCreate
 from app.services.exceptions import NotFoundError
 
@@ -10,7 +10,7 @@ from app.services.exceptions import NotFoundError
 async def list_parking_slots(db: AsyncSession, building_id: int | None = None) -> list[ParkingSlot]:
     stmt = select(ParkingSlot)
     if building_id is not None:
-        stmt = stmt.join(ParkingZone).where(ParkingZone.building_id == building_id)
+        stmt = stmt.join(Garage).where(Garage.building_id == building_id)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

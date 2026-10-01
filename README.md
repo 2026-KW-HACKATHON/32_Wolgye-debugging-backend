@@ -31,7 +31,7 @@ app/
 ├── models/              # SQLAlchemy 모델. __init__.py에서 전체 모델을 등록
 ├── schemas/             # Pydantic 요청·응답 스키마
 └── services/            # 비즈니스 규칙·트랜잭션(commit). HTTP를 모르고 실패는 services/exceptions.py 예외로 알림
-alembic/                 # 마이그레이션 (versions/0001, 0002)
+alembic/                 # 마이그레이션 (versions/0001~0003)
 docs/                    # 설계 문서
 tests/
 ```
@@ -40,23 +40,31 @@ tests/
 
 | 테이블 | 설명 | 주요 화면 |
 |---|---|---|
-| `buildings` | 빌라/건물. 운영팀이 등록하며, 입주민은 `invite_code`로 합류 | 건물 합류 n9 |
-| `parking_zones` | 운영팀이 미리 등록하는 구역(필로티 안쪽·건물 앞·골목) | 전체 |
-| `parking_slots` | 구역 안의 **번호**로 특정하는 칸. 2.5D 로컬 좌표(`render_*`), 바로 앞 칸(`front_slot_id`), 사용·공유 여부 | 배치도 n11, 차 배치 n15, 구역 설정 n43 |
-| `garages` | 시간제 공유 차고지(가용 시간·요일, 시간당 요금, 최대 이용 시간, 공개 여부). 칸이 `garage_id`로 소속 | n32, n34, n45 |
-| `residents` | 사용자(입주민/관리자). 이메일·비밀번호 해시·닉네임, 매너온도 | 가입 n4, 프로필 n51 |
+| `alleys` | **골목**. 최상위 운영 단위. 골목 > 빌라 > 차고지 > 칸 | 전체 |
+| `buildings` | 빌라/건물. 골목에 속하고, 운영팀이 등록하며, 입주민은 `invite_code`로 합류 | 건물 합류 n9 |
+| `garages` | **차고지**. 빌라에 속한 주차 공간(필로티 안쪽·필로티 바깥·골목 노상) | 전체 |
+| `parking_slots` | 차고지 안의 **번호**로 특정하는 칸. 2.5D 로컬 좌표(`render_*`), 바로 앞 칸(`front_slot_id`), 사용 여부 | 배치도 n11, 차 배치 n15, 구역 설정 n43 |
+| `share_offers` | 칸 **공유 조건**. 기간(`start_date`~`end_date`), 요일, 정시 단위 시간(`start_hour`~`end_hour`), 시간당 토큰, 최대 이용 시간, 공개 여부. 칸 하나에 여러 개 가능 | n32, n34, n45 |
+| `residents` | 사용자(입주민/관리자). 이메일·비밀번호 해시·닉네임, 매너온도, **보유 토큰**(`token_balance`) | 가입 n4, 프로필 n51 |
+| `token_transfers` | 토큰 이동 기록(보낸 사람, 받는 사람, 양, 원인 공유 요청). 보낸 사람이 NULL이면 시스템 지급 | - |
 | `vehicles` | 차량. `owner_id`가 NULL이면 관리자가 등록한 **미확인 차량** | n10, n52 |
 | `parking_assignments` | 차량이 칸에 배치된 기록. `released_at`이 NULL이면 주차 중, `is_permanent`는 상시 주차 | n15 |
 | `departure_schedules` | 출차 예정(날짜·시간, 반복 요일, AI 추정 여부, 메모) | n15, n18, n20 |
-| `share_requests` | 공유 칸 시간제 이용 요청과 수락/거절(사유 포함) | n34, n41, n47 |
+| `share_requests` | 공유 조건(`offer_id`)에 대한 정시 단위 이용 요청(`request_date`, `start_hour`~`end_hour`)과 수락/거절. 요청할 때 가격(`total_price`, 토큰)을 고정 | n34, n41, n47 |
 | `move_requests` | 이동 요청. 받는 사람은 `target_vehicle.owner_id` | n29, n41 |
 | `notifications` | 전날 밤 출차 알림, 공유·이동 요청 알림. 원인이 된 요청을 FK로 연결 | 알림 |
 
 **DB가 직접 막는 규칙** (마이그레이션 `0002`)
 - 한 칸에는 주차 중인 차가 한 대, 한 차는 한 칸에만 있음 (부분 UNIQUE 인덱스)
 - 같은 칸에서 **수락된** 공유 요청끼리 시간이 겹치지 않음 (`EXCLUDE USING gist`)
-- 구역 이름은 건물 안에서, 칸 번호는 구역 안에서 중복 불가. 대표 차량은 사용자당 하나. 같은 차에 대기 중인 이동 요청은 하나
-- `is_active`와 `released_at`의 일관성, 반복 요일 값은 0~6, 공유 시작 시각이 종료 시각보다 앞섬 (CHECK 제약)
+- 차고지 이름은 빌라 안에서, 칸 번호는 차고지 안에서 중복 불가. 대표 차량은 사용자당 하나. 같은 차에 대기 중인 이동 요청은 하나
+- `is_active`와 `released_at`의 일관성, 반복 요일 값은 0~6, 공유 시간은 0~24시이고 시작 시가 종료 시보다 앞섬, 공유 기간 시작일 ≤ 종료일, 토큰 잔액 ≥ 0 (CHECK 제약)
+- 공유 요청의 칸(`slot_id`)은 항상 그 공유 조건의 칸과 같음 (`(offer_id, slot_id)` 복합 FK) (마이그레이션 `0003`)
+
+**공유와 토큰**
+- 결제는 토큰으로만 합니다. 관리자가 요청을 **수락할 때** 요청자의 토큰 `total_price`가 공유 조건의 `host`에게 넘어가고, `token_transfers`에 기록됩니다. 잔액이 부족하면 409를 반환하고 수락되지 않습니다.
+- 요청은 공유 조건의 기간·요일·시간·최대 이용 시간 안에서만 만들 수 있습니다(`app/services/share_requests.py`).
+- 토큰 충전·선물 API는 아직 없습니다. 지급은 `app/services/tokens.transfer(sender_id=None, ...)`을 호출해서 합니다.
 
 **참고**
 - enum 컬럼에는 값이 아니라 **이름**이 저장됩니다. 예: `share_request_status`에는 `'PENDING'`이 들어가며, 이는 SQLAlchemy 기본 동작입니다.
@@ -91,6 +99,7 @@ uvicorn app.main:app --reload
 |---|---|
 | `0001` | PostGIS 확장 활성화 |
 | `0002` | 도메인 스키마 전체 생성과 `btree_gist` 확장 |
+| `0003` | 골목(`alleys`) 추가, 구역 → 차고지(`garages`), 공유 조건(`share_offers`), 정시 단위 공유 요청, 토큰(`token_balance`, `token_transfers`). 기존 공유 요청은 새 구조로 옮길 수 없어 삭제 |
 
 모델을 바꾼 뒤에는 아래 순서로 진행합니다.
 ```bash
@@ -104,14 +113,16 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 
 ## API
 - `GET  /health`
+- `GET|POST /api/v1/alleys`, `GET /api/v1/alleys/{id}`
 - `GET|POST /api/v1/buildings`, `GET /api/v1/buildings/{id}`
 - `GET|POST /api/v1/parking-slots?building_id=`, `GET /api/v1/parking-slots/{id}`
 - `GET|POST /api/v1/vehicles`, `GET /api/v1/vehicles/{id}`
 - `GET|POST /api/v1/departures?vehicle_id=`, `GET /api/v1/departures/{id}`
+- `GET|POST /api/v1/share-offers?slot_id=&public_only=`, `GET /api/v1/share-offers/{id}`
 - `GET|POST /api/v1/share-requests?status=`
-- `POST /api/v1/share-requests/{id}/decision`: 관리자 수락/거절. `status`는 `accepted`/`rejected`, `reject_reason`은 선택
+- `POST /api/v1/share-requests/{id}/decision`: 관리자 수락/거절. `status`는 `accepted`/`rejected`, `reject_reason`은 선택. 수락하면 토큰이 이동
 
-구역, 차고지, 이동 요청, 인증 API는 아직 없습니다. 구현할 때는 `docs/db-design-issues.md` 5장의 체크리스트를 참고하세요.
+차고지, 이동 요청, 토큰 충전·선물, 인증 API는 아직 없습니다. 구현할 때는 `docs/db-design-issues.md` 5장의 체크리스트를 참고하세요.
 
 ## 개발 규칙
 - 엔드포인트에서는 DB 세션을 `db: DbSession`(`app/api/deps.py`)으로 받습니다. 기본값에 `Depends()`를 쓰는 방식은 lint(B008)에 걸립니다.

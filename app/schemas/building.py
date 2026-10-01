@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class BuildingBase(BaseModel):
+    alley_id: int
     name: str
     address: str
     detail_address: str | None = None

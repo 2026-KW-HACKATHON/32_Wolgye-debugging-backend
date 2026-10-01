@@ -5,13 +5,22 @@ from sqlalchemy import text
 
 from app.core.db_errors import CONSTRAINT_MESSAGES, FOREIGN_KEY_MESSAGE
 from app.models.share_request import ShareRequestStatus
-from tests.factories import make_building, make_resident, make_share_request, make_slot, make_zone
+from tests.factories import (
+    make_alley,
+    make_building,
+    make_garage,
+    make_resident,
+    make_share_offer,
+    make_share_request,
+    make_slot,
+)
 
 pytestmark = pytest.mark.anyio
 
 
-async def test_duplicate_invite_code(client):
-    payload = {"name": "월계빌라", "address": "서울", "invite_code": "DUP"}
+async def test_duplicate_invite_code(client, db):
+    alley = await make_alley(db)
+    payload = {"alley_id": alley.id, "name": "월계빌라", "address": "서울", "invite_code": "DUP"}
     assert (await client.post("/api/v1/buildings", json=payload)).status_code == 201
 
     res = await client.post("/api/v1/buildings", json=payload)
@@ -37,9 +46,9 @@ async def test_second_primary_vehicle_partial_unique_index(client, db):
 
 
 async def test_check_constraint_slot_number(client, db):
-    zone = await make_zone(db, await make_building(db))
+    garage = await make_garage(db, await make_building(db))
 
-    res = await client.post("/api/v1/parking-slots", json={"zone_id": zone.id, "number": 0})
+    res = await client.post("/api/v1/parking-slots", json={"garage_id": garage.id, "number": 0})
     assert res.status_code == 409
     assert res.json() == {"detail": CONSTRAINT_MESSAGES["ck_slot_number_positive"]}
 
@@ -51,10 +60,12 @@ async def test_foreign_key_violation(client):
 
 
 async def test_accept_overlapping_share_request_exclusion(client, db):
-    slot = await make_slot(db, await make_zone(db, await make_building(db)), is_shareable=True)
+    slot = await make_slot(db, await make_garage(db, await make_building(db)))
+    offer = await make_share_offer(db, slot, await make_resident(db, "host@example.com"))
     requester = await make_resident(db)
-    await make_share_request(db, slot, requester, status=ShareRequestStatus.ACCEPTED)
-    overlapping = await make_share_request(db, slot, requester)  # PENDING 은 겹쳐도 저장됨
+    await make_share_request(db, offer, requester, status=ShareRequestStatus.ACCEPTED, start_hour=10, end_hour=12)
+    # PENDING 은 겹쳐도 저장됨. 11~13시는 10~12시와 겹친다.
+    overlapping = await make_share_request(db, offer, requester, start_hour=11, end_hour=13)
 
     res = await client.post(f"/api/v1/share-requests/{overlapping.id}/decision", json={"status": "accepted"})
     assert res.status_code == 409
