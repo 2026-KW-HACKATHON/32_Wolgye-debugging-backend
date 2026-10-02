@@ -7,7 +7,7 @@ from app.schemas.user import OnboardingStep
 
 class SignupRequest(BaseModel):
     email: EmailStr = Field(max_length=255)
-    password: str = Field(min_length=1)
+    password: str = Field(min_length=8, max_length=128)
     nickname: str = Field(min_length=1, max_length=50)
     agree_terms: bool
 

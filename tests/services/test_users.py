@@ -72,6 +72,14 @@ async def test_join_building(db):
     assert result.onboarding_step == OnboardingStep.REGISTER_VEHICLE
 
 
+@pytest.mark.parametrize("typed", ["hanbit01", "  HanBit01 ", "HANBIT01"])
+async def test_join_building_code_ignores_case_and_spaces(db, typed):
+    building = await make_building(db, invite_code="HANBIT01")
+    user = await make_resident(db)
+    await users.join_building(db, user, typed)
+    assert user.building_id == building.id
+
+
 async def test_join_building_invalid_code(db):
     user = await make_resident(db)
     with pytest.raises(NotFoundError) as exc:

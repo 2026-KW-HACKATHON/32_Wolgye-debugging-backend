@@ -51,6 +51,8 @@ class ProfileUpdate(BaseModel):
 
 
 class JoinBuildingRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # 앞뒤 공백 제거 후 길이 검사
+
     invite_code: str = Field(min_length=1, max_length=12)
 
 

@@ -2,7 +2,7 @@
 
 import re
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enum_maps import role_to_api
@@ -86,14 +86,16 @@ async def update_me(db: AsyncSession, user: Resident, payload: ProfileUpdate) ->
 
 
 async def join_building(db: AsyncSession, user: Resident, invite_code: str) -> JoinBuildingResult:
-    """초대코드로 빌라에 합류. 이미 소속이면(같은 빌라 포함) 409 ALREADY_IN_BUILDING, 코드가 없으면 404 INVALID_INVITE_CODE."""
+    """초대코드(대소문자 무시)로 빌라에 합류. 이미 소속이면(같은 빌라 포함) 409 ALREADY_IN_BUILDING, 코드가 없으면 404 INVALID_INVITE_CODE."""
     if user.building_id is not None:
         raise ConflictError(
             "이미 빌라에 소속되어 있습니다.",
             code=ErrorCode.ALREADY_IN_BUILDING,
             detail={"building_id": user.building_id},
         )
-    building = await db.scalar(select(Building).where(Building.invite_code == invite_code))
+    # 초대코드는 앞뒤 공백을 지우고 대소문자 구분 없이 비교한다 (대문자로 정규화)
+    code = invite_code.strip().upper()
+    building = await db.scalar(select(Building).where(func.upper(Building.invite_code) == code))
     if building is None:
         raise NotFoundError("초대코드가 올바르지 않습니다.", code=ErrorCode.INVALID_INVITE_CODE)
 

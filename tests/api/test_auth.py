@@ -46,6 +46,25 @@ async def test_signup_missing_field(client, field):
     assert assert_error(res, ErrorCode.INVALID_INPUT)["detail"]["field"] == field
 
 
+@pytest.mark.parametrize("password", ["1234567", "x" * 129])
+async def test_signup_password_length(client, password):
+    res = await _signup(client, password=password)
+    assert res.status_code == 400
+    assert assert_error(res, ErrorCode.INVALID_INPUT)["detail"]["field"] == "password"
+
+
+@pytest.mark.parametrize("password", ["12345678", "x" * 128])
+async def test_signup_password_length_ok(client, password):
+    assert (await _signup(client, password=password)).status_code == 201
+
+
+@pytest.mark.parametrize("nickname", ["", "x" * 51])
+async def test_signup_nickname_length(client, nickname):
+    res = await _signup(client, nickname=nickname)
+    assert res.status_code == 400
+    assert assert_error(res, ErrorCode.INVALID_INPUT)["detail"]["field"] == "nickname"
+
+
 async def test_signup_invalid_email(client):
     res = await _signup(client, email="not-an-email")
     assert res.status_code == 400
@@ -190,6 +209,14 @@ async def test_join_building(client, db):
 
     me = (await client.get(f"{API}/users/me", headers=auth_headers(user))).json()
     assert me["building"]["building_id"] == building.id
+
+
+async def test_join_building_code_ignores_case_and_spaces(client, db):
+    building = await make_building(db, invite_code="HANBIT01")
+    user = await make_resident(db)
+    res = await client.post(f"{API}/buildings/join", headers=auth_headers(user), json={"invite_code": " hanbit01 "})
+    assert res.status_code == 200
+    assert res.json()["building_id"] == building.id
 
 
 async def test_join_building_invalid_code(client, db):
