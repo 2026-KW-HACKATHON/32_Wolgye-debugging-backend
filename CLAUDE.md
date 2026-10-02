@@ -42,6 +42,9 @@ alembic upgrade head && alembic check   # 모델 ↔ 마이그레이션 일치 �
 - **서비스는 HTTP를 모른다**: 실패는 `HTTPException`이 아니라 `app/services/exceptions.py`의 도메인 예외(`NotFoundError` 404 / `ConflictError` 409 / `ForbiddenError` 403 등)에 명세의 에러 `code`를 담아 알린다. 변환은 `app/main.py`의 전역 핸들러가 한다.
 - **에러 응답 형식**은 명세대로 `{"error": {"code", "message", "detail"}}`이다. 코드는 명세 `ErrorCode` enum만 쓴다. 요청 검증 실패는 400 `INVALID_INPUT`. (이슈 #4에서 기존 `{"detail": ...}` 형식을 바꾼다)
 - DB 세션은 `db: DbSession`(`app/api/deps.py`)으로 받는다. 기본값에 `Depends()`를 쓰면 lint(B008)에 걸린다.
+- 인증·권한은 `app/api/deps.py`의 `CurrentUser`, `BuildingMember`, `BuildingAdmin`(경로에 `{building_id}` 필요)을 쓴다. 경로에 빌라 id가 없으면 서비스에서 `app/services/permissions.py`의 `ensure_building_member/admin`을 부른다. #6 전까지는 `X-User-Id` 헤더(resident id)가 임시 인증이다.
+- 공통 도구: 에러 코드 `app/core/error_codes.py`, 페이지네이션 `app/services/pagination.py`(`paginate`) + `app/schemas/common.py`(`Page[T]`) + `deps.py`(`CursorParam`, `LimitParam`), 번호판 `app/core/plates.py`·`PlateIn/PlateOut`, 요일 `app/core/weekdays.py`, 명세↔DB enum `app/core/enum_maps.py`.
+- 구 API 라우터는 `app/api/v1/endpoints/legacy/`에 있다 (#15에서 삭제). 새 엔드포인트는 `endpoints/` 바로 아래 자기 파일에만 추가한다.
 - DB 제약 위반(`IntegrityError`)은 전역 핸들러가 409로 바꾼다. 새 제약을 추가하면 `app/core/db_errors.py`에 제약 이름별 에러 코드와 메시지를 등록한다.
 - 새 모델은 `app/models/__init__.py`에 반드시 import 한다. 빠지면 relationship 해석 실패(500)와 Alembic 누락이 생긴다.
 - 테스트: 비즈니스 규칙은 `tests/services/`, API는 `tests/api/`. 데이터는 `tests/factories.py`로 만든다. 명세가 아직 바뀔 수 있으므로 응답 전체를 스냅샷처럼 고정하는 테스트는 피한다.

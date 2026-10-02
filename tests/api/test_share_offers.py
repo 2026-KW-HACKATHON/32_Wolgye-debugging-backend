@@ -1,7 +1,9 @@
 import pytest
 
-from app.core.db_errors import CONSTRAINT_MESSAGES
+from app.core.db_errors import CONSTRAINT_ERRORS
+from app.core.error_codes import ErrorCode
 from tests.factories import make_building, make_garage, make_resident, make_share_offer, make_slot
+from tests.helpers import assert_error
 
 pytestmark = pytest.mark.anyio
 
@@ -64,7 +66,7 @@ async def test_share_offer_end_date_before_start_date(client, slot, host):
     }
     res = await client.post(URL, json=payload)
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["ck_share_offer_dates"]}
+    assert_error(res, *CONSTRAINT_ERRORS["ck_share_offer_dates"])
 
 
 async def test_share_offer_hours_reversed(client, slot, host):
@@ -78,10 +80,10 @@ async def test_share_offer_hours_reversed(client, slot, host):
     }
     res = await client.post(URL, json=payload)
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["ck_share_offer_hours"]}
+    assert_error(res, *CONSTRAINT_ERRORS["ck_share_offer_hours"])
 
 
 async def test_get_share_offer_not_found(client):
     res = await client.get(f"{URL}/999")
     assert res.status_code == 404
-    assert res.json() == {"detail": "Share offer not found"}
+    assert_error(res, ErrorCode.NOT_FOUND, "Share offer not found")

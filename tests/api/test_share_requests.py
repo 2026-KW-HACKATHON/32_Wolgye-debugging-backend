@@ -1,7 +1,9 @@
 import pytest
 
+from app.core.error_codes import ErrorCode
 from app.models.share_request import ShareRequestStatus
 from tests.factories import make_building, make_garage, make_resident, make_share_offer, make_share_request, make_slot
+from tests.helpers import assert_error
 
 pytestmark = pytest.mark.anyio
 
@@ -63,7 +65,8 @@ async def test_create_share_request_invalid_hours(client, offer, requester, star
         "end_hour": end_hour,
     }
     res = await client.post(URL, json=payload)
-    assert res.status_code == 422
+    assert res.status_code == 400
+    assert_error(res, ErrorCode.INVALID_INPUT)
 
 
 async def test_list_share_requests_filtered_by_status(client, db, offer, requester):
@@ -102,7 +105,7 @@ async def test_reject_share_request_with_reason(client, db, offer, requester):
 async def test_decide_share_request_not_found(client):
     res = await client.post(f"{URL}/999/decision", json={"status": "accepted"})
     assert res.status_code == 404
-    assert res.json() == {"detail": "Share request not found"}
+    assert_error(res, ErrorCode.NOT_FOUND, "Share request not found")
 
 
 async def test_decide_share_request_already_decided(client, db, offer, requester):
@@ -110,4 +113,4 @@ async def test_decide_share_request_already_decided(client, db, offer, requester
 
     res = await client.post(f"{URL}/{req.id}/decision", json={"status": "rejected"})
     assert res.status_code == 409
-    assert res.json() == {"detail": "Already decided"}
+    assert_error(res, ErrorCode.ALREADY_DECIDED, "Already decided")

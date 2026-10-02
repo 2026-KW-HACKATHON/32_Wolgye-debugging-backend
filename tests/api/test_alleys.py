@@ -1,5 +1,8 @@
 import pytest
 
+from app.core.error_codes import ErrorCode
+from tests.helpers import assert_error
+
 pytestmark = pytest.mark.anyio
 
 URL = "/api/v1/alleys"
@@ -22,4 +25,4 @@ async def test_create_and_get_alley(client):
 async def test_get_alley_not_found(client):
     res = await client.get(f"{URL}/999")
     assert res.status_code == 404
-    assert res.json() == {"detail": "Alley not found"}
+    assert_error(res, ErrorCode.NOT_FOUND, "Alley not found")
