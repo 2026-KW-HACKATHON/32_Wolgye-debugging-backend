@@ -1,10 +1,12 @@
-"""#4 공통 기반: 에러 응답 형식, 임시 인증(X-User-Id), 빌라 입주민·관리인 의존성, 페이지네이션 쿼리.
+"""#4 공통 기반: 에러 응답 형식, 인증(Bearer access 토큰), 빌라 입주민·관리인 의존성, 페이지네이션 쿼리.
 
 엔드포인트가 아직 없으므로 테스트 전용 앱에 공용 핸들러·의존성을 붙여 확인한다.
 """
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -21,14 +23,16 @@ from app.api.deps import (
     get_db,
 )
 from app.api.errors import register_exception_handlers
+from app.core.config import get_settings
 from app.core.error_codes import ErrorCode
+from app.core.security import ALGORITHM, create_access_token, create_refresh_token
 from app.models.alley import Alley
 from app.models.resident import ResidentRole
 from app.schemas.common import Page
 from app.services.exceptions import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.services.pagination import DEFAULT_LIMIT, paginate
 from tests.factories import make_alley, make_building, make_resident
-from tests.helpers import assert_error
+from tests.helpers import assert_error, auth_headers
 
 pytestmark = pytest.mark.anyio
 
@@ -153,17 +157,43 @@ async def test_unknown_route_uses_error_format(client):
     assert_error(res, ErrorCode.NOT_FOUND)
 
 
-# ── CurrentUser (임시: X-User-Id) ──
-@pytest.mark.parametrize("headers", [{}, {"X-User-Id": "abc"}, {"X-User-Id": "999"}])
-async def test_current_user_unauthorized(test_client, headers):
-    res = await test_client.get("/me", headers=headers)
+# ── CurrentUser (Bearer access 토큰) ──
+def _jwt(
+    resident_id: int, *, token_type: str = "access", expires_in: timedelta = timedelta(minutes=5), key=None
+) -> str:
+    """서명 키·만료·type 을 바꿔 가며 토큰을 직접 만든다."""
+    payload = {"sub": str(resident_id), "type": token_type, "exp": datetime.now(UTC) + expires_in}
+    return jwt.encode(payload, key or get_settings().secret_key, algorithm=ALGORITHM)
+
+
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.parametrize(
+    "make_headers",
+    [
+        pytest.param(lambda user: {}, id="no-header"),
+        pytest.param(lambda user: {"Authorization": f"Basic {user.id}"}, id="not-bearer"),
+        pytest.param(lambda user: _bearer("not-a-jwt"), id="garbage"),
+        pytest.param(lambda user: _bearer(_jwt(user.id, key="forged-secret-key-forged-secret-key")), id="forged"),
+        pytest.param(lambda user: _bearer(_jwt(user.id, expires_in=timedelta(seconds=-1))), id="expired"),
+        pytest.param(lambda user: _bearer(create_refresh_token(user.id)), id="refresh-token"),
+        pytest.param(lambda user: _bearer(_jwt(user.id, token_type="refresh")), id="refresh-type"),
+        pytest.param(lambda user: _bearer(create_access_token(user.id + 999)), id="no-user"),
+        pytest.param(lambda user: {"X-User-Id": str(user.id)}, id="old-x-user-id-removed"),
+    ],
+)
+async def test_current_user_unauthorized(test_client, db, make_headers):
+    user = await make_resident(db)
+    res = await test_client.get("/me", headers=make_headers(user))
     assert res.status_code == 401
     assert_error(res, ErrorCode.UNAUTHORIZED, "로그인이 필요합니다.")
 
 
 async def test_current_user_ok(test_client, db):
     user = await make_resident(db)
-    res = await test_client.get("/me", headers={"X-User-Id": str(user.id)})
+    res = await test_client.get("/me", headers=auth_headers(user))
     assert res.status_code == 200
     assert res.json() == {"id": user.id}
 
@@ -176,7 +206,7 @@ async def building(db):
 
 async def test_member_ok(test_client, db, building):
     user = await make_resident(db, building=building)
-    res = await test_client.get(f"/buildings/{building.id}/member", headers={"X-User-Id": str(user.id)})
+    res = await test_client.get(f"/buildings/{building.id}/member", headers=auth_headers(user))
     assert res.status_code == 200
 
 
@@ -190,7 +220,7 @@ async def test_member_requires_login(test_client, building):
 async def test_member_forbidden(test_client, db, building, other_building):
     other = await make_building(db, invite_code="OTHER1", alley=None) if other_building else None
     user = await make_resident(db, building=other)
-    res = await test_client.get(f"/buildings/{building.id}/member", headers={"X-User-Id": str(user.id)})
+    res = await test_client.get(f"/buildings/{building.id}/member", headers=auth_headers(user))
     assert res.status_code == 403
     assert_error(res, ErrorCode.NOT_BUILDING_MEMBER)
 
@@ -198,21 +228,21 @@ async def test_member_forbidden(test_client, db, building, other_building):
 @pytest.mark.parametrize("kind", ["member", "admin"])
 async def test_unknown_building_is_404(test_client, db, building, kind):
     manager = await make_resident(db, building=building, role=ResidentRole.MANAGER)
-    res = await test_client.get(f"/buildings/999/{kind}", headers={"X-User-Id": str(manager.id)})
+    res = await test_client.get(f"/buildings/999/{kind}", headers=auth_headers(manager))
     assert res.status_code == 404
     assert_error(res, ErrorCode.NOT_FOUND)
 
 
 async def test_admin_ok_and_admin_is_member(test_client, db, building):
     manager = await make_resident(db, building=building, role=ResidentRole.MANAGER)
-    headers = {"X-User-Id": str(manager.id)}
+    headers = auth_headers(manager)
     assert (await test_client.get(f"/buildings/{building.id}/admin", headers=headers)).status_code == 200
     assert (await test_client.get(f"/buildings/{building.id}/member", headers=headers)).status_code == 200
 
 
 async def test_admin_forbidden_for_resident(test_client, db, building):
     resident = await make_resident(db, building=building)
-    res = await test_client.get(f"/buildings/{building.id}/admin", headers={"X-User-Id": str(resident.id)})
+    res = await test_client.get(f"/buildings/{building.id}/admin", headers=auth_headers(resident))
     assert res.status_code == 403
     assert_error(res, ErrorCode.NOT_BUILDING_ADMIN)
 
@@ -220,7 +250,7 @@ async def test_admin_forbidden_for_resident(test_client, db, building):
 async def test_admin_forbidden_for_other_building_manager(test_client, db, building):
     other = await make_building(db, invite_code="OTHER1")
     manager = await make_resident(db, building=other, role=ResidentRole.MANAGER)
-    res = await test_client.get(f"/buildings/{building.id}/admin", headers={"X-User-Id": str(manager.id)})
+    res = await test_client.get(f"/buildings/{building.id}/admin", headers=auth_headers(manager))
     assert res.status_code == 403
     assert_error(res, ErrorCode.NOT_BUILDING_ADMIN)
 

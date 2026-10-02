@@ -3,6 +3,7 @@
 from httpx import Response
 
 from app.core.error_codes import ErrorCode
+from app.core.security import create_access_token
 
 
 def assert_error(res: Response, code: ErrorCode | str, message: str | None = None) -> dict:
@@ -20,7 +21,7 @@ def assert_error(res: Response, code: ErrorCode | str, message: str | None = Non
 def auth_headers(resident) -> dict[str, str]:
     """로그인한 resident 의 인증 헤더. API 테스트는 인증 헤더를 **항상 이 함수로** 만든다.
 
-    #6 전까지는 임시 `X-User-Id` 헤더, #6 에서 `Authorization: Bearer <access_token>` 으로 바뀐다.
-    이 함수만 바뀌므로 다른 테스트는 고칠 필요가 없다.
+    resident id 로 access 토큰(JWT, 30분)을 바로 만들어 `Authorization: Bearer <access_token>` 을 돌려준다 (#6).
+    로그인 API 를 거치지 않으므로 password_hash 가 없는 factories 의 resident 에도 쓸 수 있다.
     """
-    return {"X-User-Id": str(resident.id)}
+    return {"Authorization": f"Bearer {create_access_token(resident.id)}"}
