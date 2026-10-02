@@ -85,25 +85,7 @@ def departure_on(rows: Iterable[DepartureSchedule], day: date) -> Departure | No
 _RECURRING_LOOKAHEAD_DAYS = 7
 
 
-async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> Departure | None:
-    """vehicle_id 차량의 다음 출차 예정: 오늘(KST) 것이 있으면 시각이 지났어도 오늘 것, 없으면 가장 가까운 이후 날짜의 것.
-
-    지난 날짜의 일회성 행은 보지 않는다. 없으면 None.
-    """
-    today = now.astimezone(KST).date()
-    rows = list(
-        (
-            await db.scalars(
-                select(DepartureSchedule).where(
-                    DepartureSchedule.vehicle_id == vehicle_id,
-                    or_(
-                        DepartureSchedule.scheduled_date >= today,
-                        func.cardinality(DepartureSchedule.repeat_weekdays) > 0,
-                    ),
-                )
-            )
-        ).all()
-    )
+def _next_from_rows(rows: list[DepartureSchedule], today: date) -> Departure | None:
     days = {row.scheduled_date for row in rows if not _is_recurring(row)}
     if any(_is_recurring(row) for row in rows):
         days.update(today + timedelta(days=i) for i in range(_RECURRING_LOOKAHEAD_DAYS))
@@ -112,6 +94,41 @@ async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> De
         if departure is not None:
             return departure
     return None
+
+
+async def next_departures(db: AsyncSession, vehicle_ids: Iterable[int], now: datetime) -> dict[int, Departure]:
+    """차량별 다음 출차 예정 (vehicle_id → Departure). 예정이 없는 차량은 결과에 없다.
+
+    다음 출차 예정 = 오늘(KST) 것이 있으면 시각이 지났어도 오늘 것, 없으면 가장 가까운 이후 날짜의 것.
+    지난 날짜의 일회성 행은 보지 않는다.
+    """
+    ids = list(vehicle_ids)
+    if not ids:
+        return {}
+    today = now.astimezone(KST).date()
+    rows = await db.scalars(
+        select(DepartureSchedule).where(
+            DepartureSchedule.vehicle_id.in_(ids),
+            or_(
+                DepartureSchedule.scheduled_date >= today,
+                func.cardinality(DepartureSchedule.repeat_weekdays) > 0,
+            ),
+        )
+    )
+    by_vehicle: dict[int, list[DepartureSchedule]] = {}
+    for row in rows.all():
+        by_vehicle.setdefault(row.vehicle_id, []).append(row)
+    result = {}
+    for vehicle_id, vehicle_rows in by_vehicle.items():
+        departure = _next_from_rows(vehicle_rows, today)
+        if departure is not None:
+            result[vehicle_id] = departure
+    return result
+
+
+async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> Departure | None:
+    """vehicle_id 차량의 다음 출차 예정 (규칙은 next_departures). 없으면 None."""
+    return (await next_departures(db, [vehicle_id], now)).get(vehicle_id)
 
 
 # ── 반복 출차 일정 (차량당 하나: repeat_weekdays 가 비어 있지 않은 행) ─────────
