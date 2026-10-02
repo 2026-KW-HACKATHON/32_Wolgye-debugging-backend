@@ -1,4 +1,4 @@
-"""명세(docs/openapi-mock.yaml)의 `components.schemas.ErrorCode` enum 17개.
+"""명세(docs/openapi-mock.yaml)의 `components.schemas.ErrorCode` enum 18개.
 
 에러 응답의 `error.code` 에는 이 값만 쓴다. 명세에 코드를 추가하면 여기에도 추가한다.
 """
@@ -19,6 +19,7 @@ class ErrorCode(enum.StrEnum):
     NOT_FOUND = "NOT_FOUND"
     INVALID_INVITE_CODE = "INVALID_INVITE_CODE"
     # 409
+    CONFLICT = "CONFLICT"  # 범용: 현재 상태와 충돌 (더 구체적인 코드가 없을 때)
     EMAIL_EXISTS = "EMAIL_EXISTS"
     SLOT_OCCUPIED = "SLOT_OCCUPIED"
     SLOT_UNAVAILABLE = "SLOT_UNAVAILABLE"

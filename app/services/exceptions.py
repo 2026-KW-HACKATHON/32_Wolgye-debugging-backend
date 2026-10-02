@@ -63,8 +63,8 @@ class NotFoundError(DomainError):
 
 
 class ConflictError(DomainError):
-    """현재 상태와 충돌 → 409. 명세에 409 기본 코드가 없어 호출할 때 code 를 지정하는 것을 권장한다."""
+    """현재 상태와 충돌 → 409. 기본 CONFLICT, 명세에 더 구체적인 코드가 있으면 code 로 지정한다."""
 
     status_code = 409
-    default_code = ErrorCode.INVALID_INPUT
+    default_code = ErrorCode.CONFLICT
     default_message = "현재 상태에서 처리할 수 없습니다."

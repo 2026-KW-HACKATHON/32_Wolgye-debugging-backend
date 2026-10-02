@@ -1359,7 +1359,7 @@ components:
     ShareRequestId: { name: share_request_id, in: path, required: true, schema: { type: integer }, example: 301 }
     OfferId: { name: offer_id, in: path, required: true, schema: { type: integer }, example: 401 }
     Cursor: { name: cursor, in: query, required: false, description: 이전 응답의 next_cursor, schema: { type: string } }
-    Limit: { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+    Limit: { name: limit, in: query, required: false, schema: { type: integer, default: 20, minimum: 1, maximum: 50 } }
 
   responses:
     InvalidInput:
@@ -1410,7 +1410,7 @@ components:
       type: string
       description: |
         400 `INVALID_INPUT` · 401 `UNAUTHORIZED` `INVALID_CREDENTIALS` · 403 `NOT_BUILDING_MEMBER` `NOT_BUILDING_ADMIN` ·
-        404 `NOT_FOUND` `INVALID_INVITE_CODE` · 409 `EMAIL_EXISTS` `SLOT_OCCUPIED` `SLOT_UNAVAILABLE` `VEHICLE_ALREADY_PARKED` `GARAGE_TIME_CONFLICT`.
+        404 `NOT_FOUND` `INVALID_INVITE_CODE` · 409 `CONFLICT`(범용, 현재 상태와 충돌) `EMAIL_EXISTS` `SLOT_OCCUPIED` `SLOT_UNAVAILABLE` `VEHICLE_ALREADY_PARKED` `GARAGE_TIME_CONFLICT`.
         **제안(v0.2 미정의)**: `PLATE_EXISTS` `ALREADY_DECIDED` `MOVE_REQUEST_ALREADY_PENDING` `ALREADY_IN_BUILDING` `INSUFFICIENT_TOKENS` (모두 409)
       enum:
         - INVALID_INPUT
@@ -1420,6 +1420,7 @@ components:
         - NOT_BUILDING_ADMIN
         - NOT_FOUND
         - INVALID_INVITE_CODE
+        - CONFLICT
         - EMAIL_EXISTS
         - SLOT_OCCUPIED
         - SLOT_UNAVAILABLE

@@ -32,7 +32,7 @@ def test_error_codes_match_spec_enum():
     text = SPEC.read_text(encoding="utf-8")
     block = text.split("    ErrorCode:", 1)[1].split("enum:", 1)[1].split("\n    Weekday:", 1)[0]
     spec_codes = re.findall(r"^\s+- (\w+)$", block, flags=re.MULTILINE)
-    assert len(spec_codes) == 17
+    assert len(spec_codes) == 18
     assert [c.value for c in ErrorCode] == spec_codes
 
 

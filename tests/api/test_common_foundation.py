@@ -56,6 +56,10 @@ def _build_app() -> FastAPI:
     async def raise_conflict():
         raise ConflictError("토큰이 부족합니다.", code=ErrorCode.INSUFFICIENT_TOKENS, detail={"required": 6})
 
+    @app.get("/raise/conflict-default")
+    async def raise_conflict_default():
+        raise ConflictError()
+
     @app.get("/raise/forbidden")
     async def raise_forbidden():
         raise ForbiddenError()
@@ -112,6 +116,7 @@ async def test_client(session_factory) -> AsyncIterator[AsyncClient]:
         ("/raise/forbidden", 403, ErrorCode.NOT_BUILDING_MEMBER, "이 빌라의 입주민만 이용할 수 있습니다."),
         ("/raise/unauthorized", 401, ErrorCode.INVALID_CREDENTIALS, "이메일 또는 비밀번호가 올바르지 않습니다."),
         ("/raise/conflict", 409, ErrorCode.INSUFFICIENT_TOKENS, "토큰이 부족합니다."),
+        ("/raise/conflict-default", 409, ErrorCode.CONFLICT, "현재 상태에서 처리할 수 없습니다."),
     ],
 )
 async def test_domain_error_format(test_client, path, status, code, message):
@@ -188,6 +193,14 @@ async def test_member_forbidden(test_client, db, building, other_building):
     res = await test_client.get(f"/buildings/{building.id}/member", headers={"X-User-Id": str(user.id)})
     assert res.status_code == 403
     assert_error(res, ErrorCode.NOT_BUILDING_MEMBER)
+
+
+@pytest.mark.parametrize("kind", ["member", "admin"])
+async def test_unknown_building_is_404(test_client, db, building, kind):
+    manager = await make_resident(db, building=building, role=ResidentRole.MANAGER)
+    res = await test_client.get(f"/buildings/999/{kind}", headers={"X-User-Id": str(manager.id)})
+    assert res.status_code == 404
+    assert_error(res, ErrorCode.NOT_FOUND)
 
 
 async def test_admin_ok_and_admin_is_member(test_client, db, building):

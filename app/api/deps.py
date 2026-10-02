@@ -8,7 +8,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.resident import Resident
 from app.services.exceptions import UnauthorizedError
 from app.services.pagination import MAX_LIMIT
-from app.services.permissions import ensure_building_admin, ensure_building_member
+from app.services.permissions import ensure_building_admin, ensure_building_exists, ensure_building_member
 
 
 async def get_db() -> AsyncGenerator[AsyncSession]:
@@ -44,14 +44,16 @@ CurrentUser = Annotated[Resident, Depends(get_current_user)]
 
 
 # ── 빌라 권한 (경로에 {building_id} 가 있는 엔드포인트용) ───────────────────
-async def require_building_member(building_id: int, user: CurrentUser) -> Resident:
-    """경로의 building_id 빌라 소속(입주민·관리인)이 아니면 403 NOT_BUILDING_MEMBER. 통과하면 user 를 돌려준다."""
+async def require_building_member(building_id: int, user: CurrentUser, db: DbSession) -> Resident:
+    """빌라가 없으면 404 NOT_FOUND, 소속(입주민·관리인)이 아니면 403 NOT_BUILDING_MEMBER. 통과하면 user 를 돌려준다."""
+    await ensure_building_exists(db, building_id)
     ensure_building_member(user, building_id)
     return user
 
 
-async def require_building_admin(building_id: int, user: CurrentUser) -> Resident:
-    """경로의 building_id 빌라 관리인(role = MANAGER)이 아니면 403 NOT_BUILDING_ADMIN. 통과하면 user 를 돌려준다."""
+async def require_building_admin(building_id: int, user: CurrentUser, db: DbSession) -> Resident:
+    """빌라가 없으면 404 NOT_FOUND, 관리인(role = MANAGER)이 아니면 403 NOT_BUILDING_ADMIN. 통과하면 user 를 돌려준다."""
+    await ensure_building_exists(db, building_id)
     ensure_building_admin(user, building_id)
     return user
 

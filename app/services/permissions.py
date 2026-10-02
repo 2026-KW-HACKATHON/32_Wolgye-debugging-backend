@@ -1,12 +1,22 @@
 """빌라 권한 확인. 경로에 building_id 가 없는 리소스(칸·공유 요청 등)는 서비스가 대상의 빌라를 찾은 뒤 이 함수를 부른다.
 경로에 building_id 가 있으면 app/api/deps.py 의 BuildingMember / BuildingAdmin 의존성을 쓴다."""
 
+from sqlalchemy import exists, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.error_codes import ErrorCode
+from app.models.building import Building
 from app.models.resident import Resident, ResidentRole
-from app.services.exceptions import ForbiddenError
+from app.services.exceptions import ForbiddenError, NotFoundError
 
 NOT_MEMBER_MESSAGE = "이 빌라의 입주민만 이용할 수 있습니다."
 NOT_ADMIN_MESSAGE = "이 빌라의 관리인만 이용할 수 있습니다."
+
+
+async def ensure_building_exists(db: AsyncSession, building_id: int) -> None:
+    """building_id 빌라가 없으면 404 NOT_FOUND. 권한 확인(403)보다 먼저 부른다."""
+    if not await db.scalar(select(exists().where(Building.id == building_id))):
+        raise NotFoundError("빌라를 찾을 수 없습니다.")
 
 
 def ensure_building_member(resident: Resident, building_id: int) -> None:
