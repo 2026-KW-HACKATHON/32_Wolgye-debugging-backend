@@ -76,7 +76,7 @@ info:
     | 12 | 차고지 등록 화면(#20)의 이름·상세 위치 | 차고지 = 빌라라서 이름·위치는 빌라의 `name`·`address` 를 씀. 화면의 차고지 이름·상세 위치 입력은 저장할 곳이 없어 받지 않음. 여러 칸을 고르면 칸마다 공유 조건이 하나씩 생김 |
     | 13 | DB 에 없어서 뺀 필드 | 칸의 `is_shareable`(칸 설정 모달 #19 의 "공유 가능" 토글)·`unavailable_reason`, 차고지 상세의 유의 사항, 차고지 사진(`thumbnail_url`, `image_url`)·유의사항(`notices`), 배치도 이미지(`layout_image_url`)·출입구 좌표. 필요하면 컬럼 추가 필요 |
     | 14 | 빌라 이동·탈퇴 | 한 빌라에만 소속되므로 이사하면 기존 빌라에서 나가야 하는데 그 API·화면이 없음 |
-    | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. 지급 방법(가입 시 지급 등) 미정 |
+    | 15 | 토큰 충전·내역 화면 없음 | 보유 토큰은 `GET /users/me` 의 `token_balance` 로만 확인. **가입할 때 500,000 토큰 지급** (시스템 지급, `token_transfers` 에 보낸 사람 NULL 로 기록). 관리인 계정은 운영자가 DB 에 직접 넣음 |
     | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
     | 17 | 알림 종류 | 와이어프레임 기준 5종. DB 는 마이그레이션 0004 로 맞춤 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
     | 18 | 공유 기간 vs 요구사항 | Manyfast 요구사항 R-UWUBSH 는 "이용 가능 **날짜**·시간" 을 등록한다고 하지만 화면에 날짜 입력이 없어 무기한으로 처리 |
@@ -301,7 +301,7 @@ paths:
       description: |
         DB 계층 그대로 **골목 > 빌라(차고지) > 주차 구역 > 칸** 을 내려줍니다.
         - `rect` 는 건물 기준 미터 단위 로컬 좌표(`render_x0..y1`)이며 2.5D 배치도 렌더링·탭 판정에 씁니다
-        - `front_slot_id` 는 이 칸 바로 앞(출구 쪽) 칸입니다. 앞 칸에 차가 있으면 이 칸 차는 막힙니다
+        - `front_slot_id` 는 이 칸 바로 앞(출구 쪽) 칸입니다. 앞 칸 차가 이 칸 차보다 늦게 나가면 이 칸 차는 막힙니다
         - 본인이 소속된 빌라만 조회할 수 있습니다 (아니면 403)
       operationId: getBuildingLayout
       x-priority: 1주차
@@ -321,7 +321,7 @@ paths:
       tags: [buildings]
       summary: 🏠 실시간 현황 (배치도 위 오버레이) (#6)
       description: |
-        칸마다 상태·주차 정보·막힘 관계를 내려줍니다. 막힘 규칙: **앞 칸(`front_slot_id`)에 차가 있으면 이 칸 차는 막힘**.
+        칸마다 상태·주차 정보·막힘 관계를 내려줍니다. 막힘 규칙: **앞 칸(`front_slot_id`)의 차가 이 칸 차보다 늦게 나가면 이 칸 차는 막힘**. 앞 칸 차의 출차 시간이 없으면(상시 주차·미확인 차량) 늦게 나가는 것으로 보고, 이 칸 차가 상시 주차면 막힘으로 보지 않습니다. 외부 차량의 출차 시간은 수락된 공유의 종료 시각입니다.
         입주민의 출차 시간 원본은 같은 빌라 입주민에게만 보이고, 공유 탐색(#13)에는 `estimated_free_at` 만 노출됩니다.
       operationId: getBuildingStatus
       x-priority: 1주차
@@ -1012,7 +1012,7 @@ paths:
       description: |
         **수락하면 `total_price` 토큰이 요청자에게서 공유 조건을 연 관리인(`host`)에게 넘어가고** `token_transfers` 에 기록됩니다. 무료(0토큰)면 이동이 없습니다.
         수락 시점에 요청자 토큰이 모자라면 409 `INSUFFICIENT_TOKENS` 이고 요청은 `PENDING` 으로 남습니다.
-        요청자에게 `SHARE_RESULT` 알림이 갑니다. 거절 사유 프리셋(`용량 초과` · `시간 불가` · `기타`)은 제안 15-3 입니다.
+        요청자에게 `SHARE_RESULT` 알림이 갑니다. 거절 사유 프리셋(`주차 구역 용량 초과` · `시간 불가` · `기타`)은 제안 15-3 입니다 (Figma 요청 거절 화면 문구 기준).
       operationId: decideShareRequest
       x-priority: 2주차
       parameters:

@@ -71,7 +71,7 @@ erDiagram
 | `buildings` | `invite_code` UNIQUE | 초대코드 충돌 |
 | `notifications` | `share_request_id`, `move_request_id` FK | 알림 탭 → 원인 화면 이동 |
 
-> ⚠️ 제약 위반은 현재 `IntegrityError` 가 그대로 올라가 **500** 이 된다. API 에서 409/422 로 변환해야 한다 (5장).
+> ✅ 제약 위반(`IntegrityError`)은 전역 핸들러가 409 로 변환한다 (`app/core/db_errors.py`). 명세의 에러 형식 `{"error": {code, message, detail}}` 으로 바꾸는 작업은 이슈 #4.
 
 Enum 값은 DB 에 **대문자 이름**(`PENDING`, `ACCEPTED`, …)으로 저장된다. raw SQL·부분 인덱스 조건에서 소문자를 쓰지 않도록 주의.
 
@@ -81,7 +81,7 @@ Enum 값은 DB 에 **대문자 이름**(`PENDING`, `ACCEPTED`, …)으로 저장
 
 ### 2-1. 건물 경계
 - 배치: 입주민 차량은 **자기 건물 칸**에만 (`slot.garage.building_id == vehicle.owner.building_id`). 외부 차량은 그 칸·시간에 `ACCEPTED` 공유 요청이 있을 때만.
-- 공유 요청: 공개된 `share_offers` 의 기간·요일·시간·최대 시간 안 (구현됨), 요청자 ≠ host (구현됨), 요청자는 **다른 건물** 주민, `vehicle_id` 는 요청자 소유. 같은 골목 안에서만 공유할지는 ❓
+- 공유 요청: 공개된 `share_offers` 의 기간·요일·시간·최대 시간 안 (구현됨), 요청자 ≠ host (구현됨), 요청자는 **다른 건물** 주민, `vehicle_id` 는 요청자 소유. **같은 골목**의 다른 빌라만 (명세 `GET /garages`)
 - 관리자 행위: 관리자 `building_id == slot.garage.building_id` 일 때만 수락/거절·미확인 차량 등록.
 
 ### 2-2. 출차 예정 조회 규칙
@@ -121,7 +121,7 @@ target 차량의 owner 가 NULL 이면 생성 거부.
 ## 5. 백엔드 로직 체크리스트
 
 **공통**
-- [ ] `IntegrityError` → 409 변환 (제약 이름별 메시지)
+- [x] `IntegrityError` → 409 변환 (제약 이름별 메시지)
 - [ ] API 테스트 (현재는 health · 매퍼 테스트뿐)
 
 **인증 (4-1)**
@@ -153,7 +153,7 @@ target 차량의 owner 가 NULL 이면 생성 거부.
 
 **토큰**
 - [x] 이동 서비스 (`app/services/tokens.py`, 잔액 확인과 차감을 한 문장으로)
-- [ ] 충전(시스템 지급)·선물·내역 API
+- [ ] 가입 시 500,000 토큰 시스템 지급 (이슈 #6). 충전·선물·내역 API 는 만들지 않음 (화면 없음)
 
 **이동 요청**
 - [ ] 생성: 2-4 검증, 수신자(`target.owner_id`)에게 `MOVE_REQUEST` 알림
