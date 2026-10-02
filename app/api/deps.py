@@ -1,12 +1,13 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, Header, Query
+from fastapi import Depends, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.resident import Resident
-from app.services.exceptions import UnauthorizedError
+from app.services import auth as auth_service
 from app.services.pagination import MAX_LIMIT
 from app.services.permissions import ensure_building_admin, ensure_building_exists, ensure_building_member
 
@@ -21,22 +22,19 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 # ── 인증 ──────────────────────────────────────────────────────────────
+# auto_error=False: 헤더가 없거나 Bearer 가 아니어도 FastAPI 기본 403 대신 아래에서 401 UNAUTHORIZED 로 통일한다
+_bearer = HTTPBearer(auto_error=False, description="POST /auth/login 의 access_token")
+
+
 async def get_current_user(
     db: DbSession,
-    x_user_id: Annotated[str | None, Header(alias="X-User-Id", description="임시 인증(#6 전까지): 로그인한 resident id")] = None,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Resident:
-    """로그인한 사용자. 없거나 확인할 수 없으면 401 UNAUTHORIZED.
+    """`Authorization: Bearer <access_token>` 의 사용자 (JWT, type=access).
 
-    TODO(#6): 임시 구현이다. `X-User-Id` 헤더의 resident id 를 그대로 믿는다.
-    #6에서 `Authorization: Bearer <access_token>` 검증(JWT, type=access)으로 교체한다.
-    교체해도 이 함수 이름과 반환 타입(Resident)은 유지한다 → 엔드포인트는 고칠 필요 없음.
+    토큰 없음·만료·위조·refresh 토큰·없는 사용자는 401 UNAUTHORIZED.
     """
-    if x_user_id is None or not x_user_id.isdigit():
-        raise UnauthorizedError()
-    user = await db.get(Resident, int(x_user_id))
-    if user is None:
-        raise UnauthorizedError()
-    return user
+    return await auth_service.authenticate(db, credentials.credentials if credentials else None)
 
 
 # 엔드포인트에서 `user: CurrentUser`

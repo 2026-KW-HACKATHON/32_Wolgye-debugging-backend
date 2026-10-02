@@ -4,4 +4,13 @@
 
 from fastapi import APIRouter
 
+from app.api.deps import CurrentUser, DbSession
+from app.schemas.user import JoinBuildingRequest, JoinBuildingResult
+from app.services import users as users_service
+
 router = APIRouter(prefix="/buildings", tags=["buildings"])
+
+
+@router.post("/join", response_model=JoinBuildingResult)
+async def join_building(payload: JoinBuildingRequest, user: CurrentUser, db: DbSession):
+    return await users_service.join_building(db, user, payload.invite_code)

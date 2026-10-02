@@ -13,7 +13,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://chagok:chagok@localhost:5432/chagok"
     database_url_sync: str = "postgresql+psycopg2://chagok:chagok@localhost:5432/chagok"
 
-    secret_key: str = "change-me"
+    secret_key: str = "change-me-local-dev-only-secret-key-32b"  # JWT HS256 키는 32바이트 이상 (운영은 .env 로 교체)
+
+    # 인증 (#6, 결정 8): JWT HS256. refresh 토큰은 DB 에 저장하지 않는다
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 14
+
+    # 가입 시 시스템 지급 토큰 (결정 6)
+    signup_token_grant: int = 500_000
 
 
 @lru_cache
