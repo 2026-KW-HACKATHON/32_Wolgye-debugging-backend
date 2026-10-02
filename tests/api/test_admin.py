@@ -101,7 +101,7 @@ async def test_list_slots(client, db, setup):
         "slot_id": s1.id,
         "zone_id": setup["garage"].id,
         "number": 1,
-        "label": "건물 앞 1번",
+        "label": "P1",
         "is_active": True,
         "occupied": True,
         "share_offer_id": None,
@@ -126,7 +126,7 @@ async def test_update_slot(client, setup):
     )
     assert res.status_code == 200, res.text
     assert res.json()["is_active"] is False
-    assert res.json()["label"] == "건물 앞 2번"
+    assert res.json()["label"] == "P2"
 
     res = await client.get(f"/api/v1/admin/buildings/{setup['building'].id}/slots", headers=auth_headers(setup["admin"]))
     assert res.json()["items"][1]["is_active"] is False
@@ -166,7 +166,7 @@ async def test_create_unknown_vehicle(client, db, setup):
     dash = await client.get(f"/api/v1/admin/buildings/{b.id}/dashboard", headers=auth_headers(setup["admin"]))
     vehicles = dash.json()["realtime"]["vehicles"]
     assert vehicles == [
-        {"slot_id": s1.id, "slot_label": "건물 앞 1번", "plate": "45다 6789", "occupant_type": "UNKNOWN", "can_request_move": False}
+        {"slot_id": s1.id, "slot_label": "P1", "plate": "45다 6789", "occupant_type": "UNKNOWN", "can_request_move": False}
     ]
 
 
