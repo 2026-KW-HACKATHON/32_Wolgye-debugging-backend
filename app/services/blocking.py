@@ -53,7 +53,8 @@ def share_end_at(share: ShareRequest) -> datetime:
     return datetime.combine(share.request_date, time.min, tzinfo=KST) + timedelta(hours=share.end_hour)
 
 
-async def _accepted_share_at(db: AsyncSession, slot_id: int, at: datetime) -> ShareRequest | None:
+async def accepted_share(db: AsyncSession, slot_id: int, at: datetime) -> ShareRequest | None:
+    """at 시각에 slot_id 칸에서 진행 중인 수락된 공유 (건우 #12 의 share_requests.accepted_share_at). 없으면 None."""
     try:
         return await share_requests.accepted_share_at(db, slot_id, at)
     except NotImplementedError:
@@ -83,7 +84,7 @@ async def occupant_exits(db: AsyncSession, slot_ids: Iterable[int], at: datetime
         if owner_building_id == slot_building_id:
             resident_cars[assignment.vehicle_id] = assignment.slot_id
         else:
-            share = await _accepted_share_at(db, assignment.slot_id, at)
+            share = await accepted_share(db, assignment.slot_id, at)
             exits[assignment.slot_id] = share_end_at(share) if share else None
 
     for vehicle_id, departure in (await departures.next_departures(db, resident_cars, at)).items():
@@ -113,6 +114,19 @@ async def blocked_by(db: AsyncSession, slot_id: int, at: datetime) -> list[int]:
     front = await db.get(ParkingSlot, slot.front_slot_id)
     slots = [slot, front] if front is not None else [slot]
     return (await _block_map(db, slots, at))[slot_id].blocked_by
+
+
+async def blocking_slots(db: AsyncSession, slot_id: int, at: datetime) -> list[int]:
+    """at 시각 기준으로 slot_id 칸의 차가 막고 있는 칸 id 목록 (이 칸을 앞 칸으로 둔 칸들 중). 없으면 []."""
+    slots = list(
+        (
+            await db.scalars(
+                select(ParkingSlot).where((ParkingSlot.id == slot_id) | (ParkingSlot.front_slot_id == slot_id))
+            )
+        ).all()
+    )
+    block = (await _block_map(db, slots, at)).get(slot_id)
+    return sorted(block.blocking) if block else []
 
 
 async def building_block_map(db: AsyncSession, building_id: int, at: datetime) -> dict[int, SlotBlock]:
