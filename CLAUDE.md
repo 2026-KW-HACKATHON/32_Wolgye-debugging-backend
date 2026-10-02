@@ -30,10 +30,10 @@ DATABASE_URL=postgresql+asyncpg://chagok:chagok@localhost:5432/chagok_test pytes
 alembic upgrade head && alembic check   # 모델 ↔ 마이그레이션 일치 확인
 ```
 - 테스트는 매번 전체 테이블을 TRUNCATE 한다. DB 이름이 `_test`로 끝나지 않으면 `tests/conftest.py`가 실행을 막는다.
-- **여러 에이전트·사람이 동시에 테스트하면** DB를 따로 쓴다 (예: `chagok_test_8`). 처음 한 번 만들고 마이그레이션한다.
+- **여러 에이전트·사람이 동시에 테스트하면** DB를 따로 쓴다 (예: `chagok_8_test`, 이슈 번호를 넣고 `_test`로 끝나야 한다). 처음 한 번 만들고 마이그레이션한다.
   ```bash
-  docker exec chagok-db psql -U chagok -d postgres -c "CREATE DATABASE chagok_test_8"
-  DATABASE_URL_SYNC=postgresql+psycopg2://chagok:chagok@localhost:5432/chagok_test_8 alembic upgrade head
+  docker exec chagok-db psql -U chagok -d postgres -c "CREATE DATABASE chagok_8_test"
+  DATABASE_URL_SYNC=postgresql+psycopg2://chagok:chagok@localhost:5432/chagok_8_test alembic upgrade head
   ```
 - 완료 기준: `ruff check .`와 `pytest -q` 통과. 모델을 건드렸다면 `alembic check`도 통과. CI(`.github/workflows/ci.yml`)도 같은 순서로 검사한다.
 
