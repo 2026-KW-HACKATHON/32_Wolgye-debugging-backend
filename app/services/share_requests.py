@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.error_codes import ErrorCode
 from app.models.resident import Resident
 from app.models.share_offer import ShareOffer
 from app.models.share_request import ShareRequest, ShareRequestStatus
@@ -44,7 +45,7 @@ async def create_share_request(db: AsyncSession, payload: ShareRequestCreate) ->
     # 요청 단계에서 미리 알려준다. 실제 차감은 수락할 때 (그 사이 잔액이 바뀔 수 있음).
     requester = await db.get(Resident, payload.requester_id)
     if requester is not None and requester.token_balance < total_price:
-        raise ConflictError("Not enough tokens")
+        raise ConflictError("Not enough tokens", code=ErrorCode.INSUFFICIENT_TOKENS)
 
     share_request = ShareRequest(**payload.model_dump(), slot_id=offer.slot_id, total_price=total_price)
     db.add(share_request)
@@ -69,7 +70,7 @@ async def decide(db: AsyncSession, request_id: int, payload: ShareRequestDecisio
     if not share_request:
         raise NotFoundError("Share request not found")
     if share_request.status != ShareRequestStatus.PENDING:
-        raise ConflictError("Already decided")
+        raise ConflictError("Already decided", code=ErrorCode.ALREADY_DECIDED)
 
     share_request.status = payload.status
     share_request.reject_reason = payload.reject_reason
@@ -89,3 +90,16 @@ async def decide(db: AsyncSession, request_id: int, payload: ShareRequestDecisio
     await db.commit()
     await db.refresh(share_request)
     return share_request
+
+
+async def accepted_share_at(db: AsyncSession, slot_id: int, at: datetime) -> ShareRequest | None:
+    """at 시각(timezone-aware)에 slot_id 칸에서 진행 중인 **수락된** 공유 요청. 없으면 None.
+
+    공유 시간은 Asia/Seoul 기준 `request_date + start_hour` 이상 ~ `request_date + end_hour` 미만으로 본다
+    (end_hour = 24 는 다음 날 0시). 같은 칸에 수락된 요청끼리는 시간이 겹치지 않으므로(EXCLUDE 제약) 최대 하나다.
+
+    현서 #8(주차 등록 시 공유 이용 칸 확인)이 호출한다. commit 하지 않는다.
+
+    TODO(#12): 건우가 구현한다.
+    """
+    raise NotImplementedError("#12 에서 구현")

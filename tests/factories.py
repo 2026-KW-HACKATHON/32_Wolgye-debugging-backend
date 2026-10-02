@@ -8,7 +8,7 @@ from app.models.alley import Alley
 from app.models.building import Building
 from app.models.garage import Garage, GarageType
 from app.models.parking_slot import ParkingSlot
-from app.models.resident import Resident
+from app.models.resident import Resident, ResidentRole
 from app.models.share_offer import ShareOffer
 from app.models.share_request import ShareRequest, ShareRequestStatus
 from app.models.vehicle import Vehicle
@@ -43,7 +43,11 @@ async def make_slot(db: AsyncSession, garage: Garage, number: int = 1) -> Parkin
 
 
 async def make_resident(
-    db: AsyncSession, email: str = "a@example.com", building: Building | None = None, token_balance: int = 0
+    db: AsyncSession,
+    email: str = "a@example.com",
+    building: Building | None = None,
+    token_balance: int = 0,
+    role: ResidentRole = ResidentRole.RESIDENT,
 ) -> Resident:
     return await _save(
         db,
@@ -53,6 +57,7 @@ async def make_resident(
             nickname=email.split("@")[0],
             building_id=building.id if building else None,
             token_balance=token_balance,
+            role=role,
         ),
     )
 

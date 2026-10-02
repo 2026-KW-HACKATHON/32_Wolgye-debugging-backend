@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import text
 
-from app.core.db_errors import CONSTRAINT_MESSAGES, FOREIGN_KEY_MESSAGE
+from app.core.db_errors import CONSTRAINT_ERRORS, FOREIGN_KEY_ERROR
 from app.models.share_request import ShareRequestStatus
 from tests.factories import (
     make_alley,
@@ -14,6 +14,7 @@ from tests.factories import (
     make_share_request,
     make_slot,
 )
+from tests.helpers import assert_error
 
 pytestmark = pytest.mark.anyio
 
@@ -25,7 +26,7 @@ async def test_duplicate_invite_code(client, db):
 
     res = await client.post("/api/v1/buildings", json=payload)
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["buildings_invite_code_key"]}
+    assert_error(res, *CONSTRAINT_ERRORS["buildings_invite_code_key"])
 
 
 async def test_duplicate_plate_no(client):
@@ -33,7 +34,7 @@ async def test_duplicate_plate_no(client):
 
     res = await client.post("/api/v1/vehicles", json={"plate_no": "12가3456"})
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["vehicles_plate_no_key"]}
+    assert_error(res, *CONSTRAINT_ERRORS["vehicles_plate_no_key"])
 
 
 async def test_second_primary_vehicle_partial_unique_index(client, db):
@@ -42,7 +43,7 @@ async def test_second_primary_vehicle_partial_unique_index(client, db):
 
     res = await client.post("/api/v1/vehicles", json={"plate_no": "22나2222", "owner_id": owner.id, "is_primary": True})
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["uq_primary_vehicle_per_owner"]}
+    assert_error(res, *CONSTRAINT_ERRORS["uq_primary_vehicle_per_owner"])
 
 
 async def test_check_constraint_slot_number(client, db):
@@ -50,13 +51,13 @@ async def test_check_constraint_slot_number(client, db):
 
     res = await client.post("/api/v1/parking-slots", json={"garage_id": garage.id, "number": 0})
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["ck_slot_number_positive"]}
+    assert_error(res, *CONSTRAINT_ERRORS["ck_slot_number_positive"])
 
 
 async def test_foreign_key_violation(client):
     res = await client.post("/api/v1/vehicles", json={"plate_no": "12가3456", "owner_id": 999})
     assert res.status_code == 409
-    assert res.json() == {"detail": FOREIGN_KEY_MESSAGE}
+    assert_error(res, *FOREIGN_KEY_ERROR)
 
 
 async def test_accept_overlapping_share_request_exclusion(client, db):
@@ -69,7 +70,7 @@ async def test_accept_overlapping_share_request_exclusion(client, db):
 
     res = await client.post(f"/api/v1/share-requests/{overlapping.id}/decision", json={"status": "accepted"})
     assert res.status_code == 409
-    assert res.json() == {"detail": CONSTRAINT_MESSAGES["ex_share_accepted_overlap"]}
+    assert_error(res, *CONSTRAINT_ERRORS["ex_share_accepted_overlap"])
 
 
 async def test_constraint_message_keys_exist_in_db(db):
@@ -81,4 +82,4 @@ async def test_constraint_message_keys_exist_in_db(db):
         )
     )
     names = set(result.scalars().all())
-    assert set(CONSTRAINT_MESSAGES) - names == set()
+    assert set(CONSTRAINT_ERRORS) - names == set()

@@ -1,6 +1,8 @@
 import pytest
 
+from app.core.error_codes import ErrorCode
 from tests.factories import make_building, make_garage
+from tests.helpers import assert_error
 
 pytestmark = pytest.mark.anyio
 
@@ -41,4 +43,4 @@ async def test_list_parking_slots_filtered_by_building(client, db):
 async def test_get_parking_slot_not_found(client):
     res = await client.get(f"{URL}/999")
     assert res.status_code == 404
-    assert res.json() == {"detail": "Parking slot not found"}
+    assert_error(res, ErrorCode.NOT_FOUND, "Parking slot not found")

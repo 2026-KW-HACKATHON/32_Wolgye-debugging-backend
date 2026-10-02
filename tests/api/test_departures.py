@@ -1,6 +1,8 @@
 import pytest
 
+from app.core.error_codes import ErrorCode
 from tests.factories import make_vehicle
+from tests.helpers import assert_error
 
 pytestmark = pytest.mark.anyio
 
@@ -44,4 +46,4 @@ async def test_list_departures_filtered_by_vehicle(client, db):
 async def test_get_departure_not_found(client):
     res = await client.get(f"{URL}/999")
     assert res.status_code == 404
-    assert res.json() == {"detail": "Departure schedule not found"}
+    assert_error(res, ErrorCode.NOT_FOUND, "Departure schedule not found")

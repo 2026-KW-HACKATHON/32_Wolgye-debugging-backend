@@ -1,9 +1,10 @@
 import pytest
 from sqlalchemy import select
 
+from app.core.error_codes import ErrorCode
 from app.models.resident import Resident
 from app.services import tokens
-from app.services.exceptions import ConflictError, NotFoundError
+from app.services.exceptions import ConflictError, InvalidInputError, NotFoundError
 from tests.factories import make_resident
 
 pytestmark = pytest.mark.anyio
@@ -38,7 +39,7 @@ async def test_transfer_not_enough_tokens(db):
     bob = await make_resident(db, "bob@example.com")
     with pytest.raises(ConflictError) as exc_info:
         await tokens.transfer(db, sender_id=alice.id, receiver_id=bob.id, amount=3)
-    assert exc_info.value.detail == "Not enough tokens"
+    assert exc_info.value.code == ErrorCode.INSUFFICIENT_TOKENS
 
 
 async def test_transfer_unknown_receiver(db):
@@ -49,5 +50,5 @@ async def test_transfer_unknown_receiver(db):
 
 async def test_transfer_non_positive_amount(db):
     alice = await make_resident(db)
-    with pytest.raises(ConflictError):
+    with pytest.raises(InvalidInputError):
         await tokens.transfer(db, sender_id=None, receiver_id=alice.id, amount=0)
