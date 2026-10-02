@@ -130,9 +130,8 @@ async def test_dashboard_congestion_realtime_and_pending(db):
     assert item.total_price == 8
 
     vehicles = {v.slot_id: v for v in dash.realtime.vehicles}
-    assert [v.slot_id for v in dash.realtime.vehicles] == [s1.id, s2.id, s3.id]
-    assert vehicles[s1.id].occupant_type == OccupantType.RESIDENT
-    assert vehicles[s1.id].can_request_move is True
+    # 입주민 차(s1)는 빼고 외부·미확인만
+    assert [v.slot_id for v in dash.realtime.vehicles] == [s2.id, s3.id]
     assert vehicles[s2.id].occupant_type == OccupantType.UNKNOWN
     assert vehicles[s2.id].can_request_move is False
     assert vehicles[s2.id].plate == "45다 6789"
@@ -142,7 +141,11 @@ async def test_dashboard_congestion_realtime_and_pending(db):
 
     peaks = {d.date: d.peak_occupied for d in dash.congestion.days}
     assert dash.congestion.total_slots == 4
-    assert len(peaks) == 31
+    assert list(peaks) == [date(2026, 10, 1), date(2026, 10, 2)]  # 이번 달은 오늘(KST)까지
     assert peaks[date(2026, 10, 1)] == 1  # 10~12 시 외부 차, 20 시부터 미확인 차 → 겹치지 않음
     assert peaks[date(2026, 10, 2)] == 2  # 미확인 + 입주민
-    assert peaks[date(2026, 10, 3)] == 0  # 미래
+
+    past = await admin_service.get_dashboard(db, building.id, "2026-09", now=now)
+    assert len(past.congestion.days) == 30  # 지난달은 전체
+    future = await admin_service.get_dashboard(db, building.id, "2026-11", now=now)
+    assert future.congestion.days == []  # 미래 달

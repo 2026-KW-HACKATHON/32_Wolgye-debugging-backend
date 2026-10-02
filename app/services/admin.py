@@ -103,13 +103,22 @@ def peak_overlap(intervals: Iterable[tuple[datetime, datetime]], start: datetime
     return peak
 
 
-def daily_peaks(intervals: list[tuple[datetime, datetime]], year: int, month: int) -> list[CongestionDay]:
-    """year-month 의 날짜(KST)마다 peak_occupied."""
-    return [CongestionDay(date=day, peak_occupied=peak_overlap(intervals, *_day_bounds(day))) for day in _month_days(year, month)]
+def daily_peaks(
+    intervals: list[tuple[datetime, datetime]], year: int, month: int, until: date | None = None
+) -> list[CongestionDay]:
+    """year-month 의 날짜(KST)마다 peak_occupied. until 이 있으면 그 날짜까지만 (지난달 = 전체, 이번 달 = 오늘까지, 미래 달 = [])."""
+    days = [day for day in _month_days(year, month) if until is None or day <= until]
+    return [CongestionDay(date=day, peak_occupied=peak_overlap(intervals, *_day_bounds(day))) for day in days]
 
 
 async def _congestion(db: AsyncSession, building_id: int, year: int, month: int, now: datetime) -> Congestion:
-    days = _month_days(year, month)
+    total_slots = await db.scalar(
+        select(func.count(ParkingSlot.id)).join(Garage).where(Garage.building_id == building_id)
+    )
+    today = now.astimezone(KST).date()
+    days = [day for day in _month_days(year, month) if day <= today]
+    if not days:  # 미래 달
+        return Congestion(total_slots=total_slots or 0, days=[])
     month_start, _ = _day_bounds(days[0])
     _, month_end = _day_bounds(days[-1])
     rows = await db.execute(
@@ -122,12 +131,9 @@ async def _congestion(db: AsyncSession, building_id: int, year: int, month: int,
             (ParkingAssignment.released_at.is_(None)) | (ParkingAssignment.released_at > month_start),
         )
     )
-    # 아직 주차 중인 차는 지금까지만 점유한 것으로 본다 (미래 날짜는 0)
+    # 아직 주차 중인 차는 지금까지만 점유한 것으로 본다
     intervals = [(assigned, released or now) for assigned, released in rows.all()]
-    total_slots = await db.scalar(
-        select(func.count(ParkingSlot.id)).join(Garage).where(Garage.building_id == building_id)
-    )
-    return Congestion(total_slots=total_slots or 0, days=daily_peaks(intervals, year, month))
+    return Congestion(total_slots=total_slots or 0, days=daily_peaks(intervals, year, month, until=today))
 
 
 # ── 대시보드 ──────────────────────────────────────────────────────────
@@ -158,7 +164,7 @@ async def _pending_requests(db: AsyncSession, building_id: int) -> list[PendingR
 
 
 async def _realtime(db: AsyncSession, building_id: int, now: datetime) -> Realtime:
-    """주차 중인 차(활성 배치) + 지금 이용 시간인 수락된 공유(그 칸에 배치가 없을 때)."""
+    """주차 중인 차(활성 배치) + 지금 이용 시간인 수락된 공유(그 칸에 배치가 없을 때) 중 외부·미확인 차량."""
     slots = (
         await db.execute(
             select(ParkingSlot, Garage.name)
@@ -201,6 +207,8 @@ async def _realtime(db: AsyncSession, building_id: int, now: datetime) -> Realti
     for slot_id in sorted(occupants, key=order.__getitem__):
         vehicle, owner = occupants[slot_id]
         kind = occupant_type(owner, building_id)
+        if kind == OccupantType.RESIDENT:  # 관리 구역 실시간은 외부·미확인 차량만 (입주민 차는 빈 칸 계산에만 반영)
+            continue
         vehicles.append(
             RealtimeVehicle(
                 slot_id=slot_id,

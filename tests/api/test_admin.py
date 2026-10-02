@@ -37,7 +37,7 @@ async def setup(db):
 async def test_dashboard_ok(client, setup):
     b = setup["building"]
     res = await client.get(
-        f"/api/v1/admin/buildings/{b.id}/dashboard", params={"month": "2026-09"}, headers=auth_headers(setup["admin"])
+        f"/api/v1/admin/buildings/{b.id}/dashboard", params={"month": "2020-01"}, headers=auth_headers(setup["admin"])
     )
     assert res.status_code == 200, res.text
     body = res.json()
@@ -45,8 +45,8 @@ async def test_dashboard_ok(client, setup):
     assert body["pending_requests"] == []
     assert body["realtime"] == {"available_count": 2, "vehicles": []}
     assert body["congestion"]["total_slots"] == 2
-    assert len(body["congestion"]["days"]) == 30
-    assert body["congestion"]["days"][0] == {"date": "2026-09-01", "peak_occupied": 0}
+    assert len(body["congestion"]["days"]) == 31
+    assert body["congestion"]["days"][0] == {"date": "2020-01-01", "peak_occupied": 0}
     assert body["ai_insight"] is None
 
 
