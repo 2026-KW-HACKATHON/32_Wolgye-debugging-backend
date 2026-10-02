@@ -142,3 +142,10 @@ async def test_read_all_requires_login(client):
     res = await client.post("/api/v1/notifications/read-all")
     assert res.status_code == 401
     assert_error(res, ErrorCode.UNAUTHORIZED)
+
+
+async def test_list_created_at_is_kst(client, db):
+    me = await make_resident(db)
+    await _notify(db, me)
+    res = await client.get("/api/v1/notifications", headers=auth_headers(me))
+    assert res.json()["items"][0]["created_at"].endswith("+09:00")

@@ -1,11 +1,11 @@
 """알림 응답 (명세 NotificationItem). link 는 컬럼 없이 종류와 FK 로 계산한다 (결정 11)."""
 
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
 from app.models.notification import Notification, NotificationType
+from app.schemas.common import KstDatetime
 
 NotificationTypeName = Literal["BLOCK_ALERT", "MOVE_REQUEST", "EXIT_DONE", "SHARE_REQUEST", "SHARE_RESULT"]
 
@@ -22,7 +22,7 @@ class NotificationItem(BaseModel):
     body: str
     link: NotificationLink | None
     is_read: bool
-    created_at: datetime
+    created_at: KstDatetime
 
     @classmethod
     def from_model(cls, n: Notification) -> "NotificationItem":
