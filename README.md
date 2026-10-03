@@ -141,6 +141,9 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 - 명세 파일: [`docs/openapi-mock.yaml`](docs/openapi-mock.yaml) (OpenAPI 3.1, 화면 번호 #1~#23은 Notion 매핑표와 같음)
 - 보기 페이지: [`docs/swagger-mock.html`](docs/swagger-mock.html) (Swagger UI를 CDN에서 불러오므로 인터넷 연결 필요)
 
+**방법 0: 웹에서 바로 보기 (GitHub Pages)**
+https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/ — `main`에 명세가 머지되면 자동으로 갱신됩니다 (`.github/workflows/pages.yml`). 설정 방법은 [`docs/worklog`의 배포 문서](docs/worklog/2026-10-03-1030-github-actions를-이용한-swagger-배포.md)에 있습니다.
+
 **방법 1: 로컬에서 열기** (Node.js 필요)
 ```bash
 cd docs
