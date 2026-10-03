@@ -9,9 +9,7 @@ from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.error_codes import ErrorCode
-from app.models.garage import Garage
 from app.models.parking_assignment import ParkingAssignment
-from app.models.parking_slot import ParkingSlot
 from app.models.resident import Resident
 from app.models.vehicle import Vehicle
 from app.schemas.common import KST
@@ -29,8 +27,8 @@ from app.schemas.my_vehicle import (
 )
 from app.schemas.vehicle import VehicleCreate
 from app.services import departures
-from app.services.admin import slot_label
 from app.services.exceptions import ConflictError, NotFoundError
+from app.services.slot_labels import slot_label
 
 STATUS_TEXT = {VehicleStatus.PARKED: "현재 주차 중", VehicleStatus.OUT: "외부 출차"}
 PLATE_EXISTS_MESSAGE = "이미 등록된 차량 번호입니다."
@@ -187,20 +185,12 @@ async def get_my_vehicle(
     now = now or datetime.now(KST)
 
     parking = schedule = None
-    row = (
-        await db.execute(
-            select(ParkingAssignment, ParkingSlot.number, Garage.name)
-            .join(ParkingSlot, ParkingSlot.id == ParkingAssignment.slot_id)
-            .join(Garage, Garage.id == ParkingSlot.garage_id)
-            .where(ParkingAssignment.vehicle_id == vehicle.id, ParkingAssignment.is_active)
-        )
-    ).first()
-    if row is not None:
-        assignment, number, garage_name = row
+    assignment = await _active_assignment(db, vehicle.id)
+    if assignment is not None:
         parking = VehicleParking(
             parking_id=assignment.id,
             slot_id=assignment.slot_id,
-            slot_label=slot_label(garage_name, number),
+            slot_label=await slot_label(db, assignment.slot_id),
             entered_at=assignment.assigned_at,
             state=ParkingState.PARKED,
         )

@@ -154,7 +154,7 @@ async def test_detail(client, db):
     assert parked["owner"] == {"name": "me", "unit": None}
     assert parked["parking"]["parking_id"] == assignment.id
     assert parked["parking"]["slot_id"] == slot.id
-    assert parked["parking"]["slot_label"] == "필로티 안쪽 1번"
+    assert parked["parking"]["slot_label"] == "P1"
     assert parked["parking"]["state"] == "PARKED"
     assert parked["parking"]["entered_at"].endswith("+09:00")  # 응답 시각은 KST (결정 28)
     assert parked["schedule"]["expected_exit_at"] is None
