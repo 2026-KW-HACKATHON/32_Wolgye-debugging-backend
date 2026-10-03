@@ -39,17 +39,13 @@ from app.schemas.admin import (
 )
 from app.services.exceptions import ConflictError, InvalidInputError, NotFoundError
 from app.services.permissions import ensure_building_admin
+from app.services.slot_labels import building_slot_labels, slot_labels
 
 KST = ZoneInfo("Asia/Seoul")
 MASK_CHAR = "○"
 
 
 # ── 표시 규칙 ──────────────────────────────────────────────────────────
-def slot_label(garage_name: str, number: int) -> str:
-    """칸 이름 = 주차 구역 이름 + 번호 (명세 열린 질문 2). "필로티 안쪽" + 1 → "필로티 안쪽 1번"."""
-    return f"{garage_name} {number}번"
-
-
 def mask_name(name: str) -> str:
     """첫 글자만 남기고 나머지를 ○ 로. "박민준" → "박○○", "홍" → "홍"."""
     name = name.strip()
@@ -139,42 +135,39 @@ async def _congestion(db: AsyncSession, building_id: int, year: int, month: int,
 # ── 대시보드 ──────────────────────────────────────────────────────────
 async def _pending_requests(db: AsyncSession, building_id: int) -> list[PendingRequestItem]:
     rows = await db.execute(
-        select(ShareRequest, Resident, ParkingSlot.number, Garage.name)
+        select(ShareRequest, Resident)
         .join(Resident, Resident.id == ShareRequest.requester_id)
         .join(ParkingSlot, ParkingSlot.id == ShareRequest.slot_id)
         .join(Garage, Garage.id == ParkingSlot.garage_id)
         .where(Garage.building_id == building_id, ShareRequest.status == ShareRequestStatus.PENDING)
         .order_by(ShareRequest.created_at.desc(), ShareRequest.id.desc())
     )
+    rows = rows.all()
+    labels = await slot_labels(db, {req.slot_id for req, _ in rows})
     return [
         PendingRequestItem(
             id=req.id,
             requester=MaskedRequester(
                 name=mask_name(requester.name or requester.nickname), temperature=requester.manner_temperature
             ),
-            slot_label=slot_label(garage_name, number),
+            slot_label=labels[req.slot_id],
             request_date=req.request_date,
             start_hour=req.start_hour,
             end_hour=req.end_hour,
             total_price=req.total_price,
             created_at=req.created_at.astimezone(KST),
         )
-        for req, requester, number, garage_name in rows.all()
+        for req, requester in rows
     ]
 
 
 async def _realtime(db: AsyncSession, building_id: int, now: datetime) -> Realtime:
     """주차 중인 차(활성 배치) + 지금 이용 시간인 수락된 공유(그 칸에 배치가 없을 때) 중 외부·미확인 차량."""
-    slots = (
-        await db.execute(
-            select(ParkingSlot, Garage.name)
-            .join(Garage, Garage.id == ParkingSlot.garage_id)
-            .where(Garage.building_id == building_id)
-            .order_by(Garage.sort_order, Garage.id, ParkingSlot.number)
-        )
-    ).all()
-    labels = {slot.id: slot_label(name, slot.number) for slot, name in slots}
-    order = {slot.id: i for i, (slot, _) in enumerate(slots)}
+    labels = await building_slot_labels(db, building_id)  # 칸 순번 순서
+    slots = {
+        slot.id: slot for slot in (await db.scalars(select(ParkingSlot).where(ParkingSlot.id.in_(labels)))).all()
+    }
+    order = {slot_id: i for i, slot_id in enumerate(labels)}
 
     # (slot_id → (vehicle, owner))
     occupants: dict[int, tuple[Vehicle, Resident | None]] = {}
@@ -218,7 +211,7 @@ async def _realtime(db: AsyncSession, building_id: int, now: datetime) -> Realti
                 can_request_move=kind != OccupantType.UNKNOWN,  # 미확인 차량은 앱으로 연락 불가
             )
         )
-    available = sum(1 for slot, _ in slots if slot.is_active and slot.id not in occupants)
+    available = sum(1 for slot in slots.values() if slot.is_active and slot.id not in occupants)
     return Realtime(available_count=available, vehicles=vehicles)
 
 
@@ -240,8 +233,9 @@ async def get_dashboard(
 
 
 # ── 칸 목록·설정 ───────────────────────────────────────────────────────
-async def _to_admin_slots(db: AsyncSession, slots: list[tuple[ParkingSlot, str]], today: date) -> list[AdminSlot]:
-    ids = [slot.id for slot, _ in slots]
+async def _to_admin_slots(db: AsyncSession, slots: list[ParkingSlot], today: date) -> list[AdminSlot]:
+    ids = [slot.id for slot in slots]
+    labels = await slot_labels(db, ids)
     occupied = set(
         (await db.scalars(select(ParkingAssignment.slot_id).where(ParkingAssignment.is_active, ParkingAssignment.slot_id.in_(ids)))).all()
     )
@@ -264,26 +258,26 @@ async def _to_admin_slots(db: AsyncSession, slots: list[tuple[ParkingSlot, str]]
             slot_id=slot.id,
             zone_id=slot.garage_id,
             number=slot.number,
-            label=slot_label(garage_name, slot.number),
+            label=labels[slot.id],
             is_active=slot.is_active,
             occupied=slot.id in occupied,
             share_offer_id=offers.get(slot.id),
         )
-        for slot, garage_name in slots
+        for slot in slots
     ]
 
 
 async def list_slots(db: AsyncSession, building_id: int, now: datetime | None = None) -> list[AdminSlot]:
     today = (now or datetime.now(KST)).astimezone(KST).date()
     slots = (
-        await db.execute(
-            select(ParkingSlot, Garage.name)
+        await db.scalars(
+            select(ParkingSlot)
             .join(Garage, Garage.id == ParkingSlot.garage_id)
             .where(Garage.building_id == building_id)
             .order_by(Garage.sort_order, Garage.id, ParkingSlot.number)
         )
     ).all()
-    return await _to_admin_slots(db, [tuple(row) for row in slots], today)
+    return await _to_admin_slots(db, list(slots), today)
 
 
 async def update_slot(db: AsyncSession, user: Resident, slot_id: int, payload: AdminSlotUpdate) -> AdminSlot:
@@ -303,7 +297,7 @@ async def update_slot(db: AsyncSession, user: Resident, slot_id: int, payload: A
         await db.commit()
         await db.refresh(slot)
     today = datetime.now(KST).date()
-    return (await _to_admin_slots(db, [(slot, garage.name)], today))[0]
+    return (await _to_admin_slots(db, [slot], today))[0]
 
 
 # ── 미확인 차량 ───────────────────────────────────────────────────────
