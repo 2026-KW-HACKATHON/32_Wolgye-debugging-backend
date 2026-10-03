@@ -80,6 +80,7 @@ info:
     | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
     | 17 | 알림 종류 | 와이어프레임 기준 5종. DB 는 마이그레이션 0004 로 맞춤 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
     | 18 | 공유 기간 vs 요구사항 | Manyfast 요구사항 R-UWUBSH 는 "이용 가능 **날짜**·시간" 을 등록한다고 하지만 화면에 날짜 입력이 없어 무기한으로 처리 |
+    | 19 | 배치 추천 규칙 (#9) | ✅ **확정 (2026-10-03, 사용자 결정)**: 추천(`RECOMMENDED`)은 **가장 이상적인 칸 한 칸**만. 조건에 맞는 칸이 없으면 추천하지 않음(`RECOMMENDED` 없음). 차가 있는 칸은 새 태그 `OCCUPIED`. 자세한 규칙은 `GET /buildings/{building_id}/slots/recommendations` 설명 참고 |
 servers:
   - url: http://localhost:8000/api/v1
     description: 로컬
@@ -549,7 +550,23 @@ paths:
       tags: [parkings]
       summary: 🏠 배치 등록 화면 태그·추천 (#7)
       description: |
-        출차 시간을 바꿀 때마다 다시 호출합니다. 앞 칸(`front_slot_id`) 관계를 따져 막힘이 가장 적은 안쪽 칸을 추천합니다.
+        출차 시간을 바꿀 때마다 다시 호출합니다. 빌라의 모든 칸을 칸 이름 순(`P1`, `P2` …)으로 하나씩 내려주고, 칸마다 태그를 하나 붙입니다.
+
+        **태그** (열린 질문 19, 2026-10-03 확정)
+        - `UNAVAILABLE`: 쓸 수 없는 칸. `unavailable_reason` = `관리인이 사용 중지한 칸이에요`(`is_active=false`) 또는 `예약된 칸이에요`(지금부터 내 출차 시각까지 — 상시 주차면 그 이후 전부 — 수락된 공유가 있음)
+        - `OCCUPIED`: 지금 다른 차가 주차 중인 칸
+        - `RECOMMENDED`: 아래 조건을 만족하는 빈 칸 중 **가장 이상적인 한 칸**. 응답에 최대 1개이고, 조건에 맞는 칸이 없으면 **추천하지 않습니다** (모든 빈 칸이 `EMPTY`)
+        - `EMPTY`: 나머지 빈 칸. 여기 두면 막게 되는 칸이 있으면 `will_block` 에 넣습니다 (없으면 빈 배열)
+
+        **추천 조건** (막힘 규칙은 결정 1, `services/blocking.py`)
+        1. 내가 막히지 않는다: 앞 칸(`front_slot_id`)이 비어 있거나, 앞 칸 차가 내 출차 시각보다 먼저(같거나 이르게) 나간다
+        2. 내가 아무도 막지 않는다: 이 칸을 앞 칸으로 두는 뒤 칸에 차가 없거나, 그 차가 나보다 늦게(같거나) 나간다
+        - 출차 시간이 없는 차(상시 주차·미확인 차량)는 가장 늦게 나가는 것으로 봅니다. 내가 상시 주차(`expected_exit_at` 생략)면 1은 항상 만족합니다
+        - 외부 차량(공유 이용자)의 출차 시각은 수락된 공유의 종료 시각입니다
+
+        **가장 이상적인 칸 고르기**: 조건을 만족하는 칸 중
+        1. 가장 안쪽 칸. 안쪽 = 앞 칸(`front_slot_id`)을 따라 출구까지 거치는 칸 수가 많은 칸
+        2. 같으면 칸 이름 순서가 빠른 칸 (`P` 번호가 작은 칸)
 
         ⚠️ `expected_exit_at` 의 `+` 는 쿼리 문자열에서 공백으로 해석되므로 **`%2B` 로 인코딩**해야 합니다.
       operationId: getSlotRecommendations
@@ -580,9 +597,15 @@ paths:
                     items: { $ref: "#/components/schemas/SlotRecommendation" }
               example:
                 slots:
-                  - { slot_id: 1007, tag: RECOMMENDED, label: P7 (안쪽), reason: 지금 선 차들보다 늦게 나가서 안쪽이 좋아요 }
-                  - { slot_id: 1008, tag: EMPTY, label: P8, will_block: [1007] }
+                  # 빌라 3, 내일 07:30 출차. P7(1007)의 앞 칸은 P8(1008), 둘 다 비어 있음
+                  - { slot_id: 1001, tag: OCCUPIED, label: P1 }
+                  - { slot_id: 1002, tag: OCCUPIED, label: P2 }
+                  - { slot_id: 1003, tag: OCCUPIED, label: P3 }
+                  - { slot_id: 1004, tag: OCCUPIED, label: P4 }
                   - { slot_id: 1005, tag: UNAVAILABLE, label: P5, unavailable_reason: 관리인이 사용 중지한 칸이에요 }
+                  - { slot_id: 1006, tag: OCCUPIED, label: P6 }
+                  - { slot_id: 1007, tag: RECOMMENDED, label: P7, reason: 앞 칸이 비어 있고 다른 차를 막지 않는 가장 안쪽 칸이에요 }
+                  - { slot_id: 1008, tag: EMPTY, label: P8, will_block: [] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingMember" }
   /parkings:
@@ -1457,7 +1480,7 @@ components:
       type: string
       enum: [EMPTY, SOON_EXIT, OCCUPIED, UNAVAILABLE]
       description: 배치도 표시 (EMPTY 빈칸 · SOON_EXIT 곧 출차 · OCCUPIED 사용 중 · UNAVAILABLE 사용 불가)
-    SlotTag: { type: string, enum: [RECOMMENDED, EMPTY, UNAVAILABLE] }
+    SlotTag: { type: string, enum: [RECOMMENDED, EMPTY, OCCUPIED, UNAVAILABLE], description: "배치 추천 태그. RECOMMENDED 는 응답에 최대 1개 (열린 질문 19)" }
     OccupantType:
       type: string
       enum: [RESIDENT, EXTERNAL, UNKNOWN]
@@ -1778,9 +1801,9 @@ components:
         slot_id: { type: integer }
         tag: { $ref: "#/components/schemas/SlotTag" }
         label: { type: string }
-        reason: { type: string }
-        will_block: { type: array, items: { type: integer }, description: 이 칸에 두면 막게 되는 칸 }
-        unavailable_reason: { type: string }
+        reason: { type: string, description: "RECOMMENDED 일 때만. 추천 이유" }
+        will_block: { type: array, items: { type: integer }, description: "EMPTY 일 때만. 이 칸에 두면 막게 되는 칸 id" }
+        unavailable_reason: { type: string, description: "UNAVAILABLE 일 때만" }
     ParkingCreate:
       type: object
       required: [slot_id, vehicle_id]
