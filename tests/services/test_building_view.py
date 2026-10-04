@@ -269,7 +269,7 @@ async def test_home_matches_spec_example(db, villa):
     )
     assert result.admin is None
     assert result.unread_notification_count == 4
-    assert [n.body for n in result.recent_notifications] == ["알림 2", "알림 1", "알림 0"]  # 최신 3개
+    assert [n.body for n in result.recent_notifications] == ["알림 2", "알림 1"]  # 최신 2개
 
 
 async def test_home_without_parking_and_for_manager(db, villa):
