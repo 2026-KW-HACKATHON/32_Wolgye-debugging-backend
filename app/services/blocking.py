@@ -29,7 +29,9 @@ from app.models.parking_slot import ParkingSlot
 from app.models.resident import Resident
 from app.models.share_request import ShareRequest
 from app.models.vehicle import Vehicle
+from app.schemas.admin import OccupantType
 from app.schemas.common import KST
+from app.schemas.my_vehicle import ExitSource
 from app.services import departures, share_requests
 
 
@@ -58,11 +60,22 @@ async def accepted_share(db: AsyncSession, slot_id: int, at: datetime) -> ShareR
     return await share_requests.accepted_share_at(db, slot_id, at)
 
 
-async def occupant_exits(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> dict[int, datetime | None]:
-    """주차 중인 칸마다 그 차의 출차 시간 (slot_id → 출차 시간 또는 None). 비어 있는 칸은 결과에 없다."""
+@dataclass(frozen=True)
+class Occupant:
+    """칸에 주차 중인 차 한 대와 그 차의 출차 시간."""
+
+    assignment: ParkingAssignment
+    vehicle: Vehicle
+    kind: OccupantType  # 입주민 / 외부(공유 이용자) / 미확인
+    exit_at: datetime | None  # 출차 시간. 없으면 None (상시 주차·미확인·일정 없음)
+    exit_source: ExitSource
+
+
+async def occupants(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> dict[int, Occupant]:
+    """주차 중인 칸마다 그 차와 출차 시간 (slot_id → Occupant). 비어 있는 칸은 결과에 없다."""
     rows = (
         await db.execute(
-            select(ParkingAssignment, Vehicle.owner_id, Resident.building_id, Garage.building_id)
+            select(ParkingAssignment, Vehicle, Resident.building_id, Garage.building_id)
             .join(Vehicle, Vehicle.id == ParkingAssignment.vehicle_id)
             .outerjoin(Resident, Resident.id == Vehicle.owner_id)
             .join(ParkingSlot, ParkingSlot.id == ParkingAssignment.slot_id)
@@ -71,35 +84,51 @@ async def occupant_exits(db: AsyncSession, slot_ids: Iterable[int], at: datetime
         )
     ).all()
 
-    exits: dict[int, datetime | None] = {}
-    resident_cars: dict[int, int] = {}  # vehicle_id → slot_id
-    for assignment, owner_id, owner_building_id, slot_building_id in rows:
-        exits[assignment.slot_id] = None
-        if assignment.is_permanent or owner_id is None:
-            continue
-        if owner_building_id == slot_building_id:
-            resident_cars[assignment.vehicle_id] = assignment.slot_id
-        else:
+    def kind_of(vehicle: Vehicle, owner_building_id: int | None, slot_building_id: int) -> OccupantType:
+        if vehicle.owner_id is None:
+            return OccupantType.UNKNOWN
+        return OccupantType.RESIDENT if owner_building_id == slot_building_id else OccupantType.EXTERNAL
+
+    kinds = {a.slot_id: kind_of(v, owner_building, slot_building) for a, v, owner_building, slot_building in rows}
+    resident_cars = [
+        a.vehicle_id for a, _, _, _ in rows if kinds[a.slot_id] is OccupantType.RESIDENT and not a.is_permanent
+    ]
+    next_exits = await departures.next_departures(db, resident_cars, at)
+
+    result: dict[int, Occupant] = {}
+    for assignment, vehicle, _, _ in rows:
+        kind = kinds[assignment.slot_id]
+        exit_at, source = None, ExitSource.NONE
+        if kind is OccupantType.RESIDENT and vehicle.id in next_exits:
+            exit_at, source = next_exits[vehicle.id].at, next_exits[vehicle.id].source
+        elif kind is OccupantType.EXTERNAL and not assignment.is_permanent:
             share = await accepted_share(db, assignment.slot_id, at)
-            exits[assignment.slot_id] = share_end_at(share) if share else None
-
-    for vehicle_id, departure in (await departures.next_departures(db, resident_cars, at)).items():
-        exits[resident_cars[vehicle_id]] = departure.at
-    return exits
+            exit_at = share_end_at(share) if share else None
+        result[assignment.slot_id] = Occupant(assignment, vehicle, kind, exit_at, source)
+    return result
 
 
-async def _block_map(db: AsyncSession, slots: list[ParkingSlot], at: datetime) -> dict[int, SlotBlock]:
-    """slots 안에서의 막힘 관계. 앞 칸이 slots 에 없으면 그 관계는 보지 않는다."""
+async def occupant_exits(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> dict[int, datetime | None]:
+    """주차 중인 칸마다 그 차의 출차 시간 (slot_id → 출차 시간 또는 None). 비어 있는 칸은 결과에 없다."""
+    return {slot_id: occupant.exit_at for slot_id, occupant in (await occupants(db, slot_ids, at)).items()}
+
+
+def block_map(slots: Iterable[ParkingSlot], exits: dict[int, datetime | None]) -> dict[int, SlotBlock]:
+    """slots 안에서의 막힘 관계. exits = 주차 중인 칸의 출차 시간 (비어 있는 칸은 없음). 앞 칸이 slots 에 없으면 보지 않는다."""
+    slots = list(slots)
     blocks = {slot.id: SlotBlock() for slot in slots}
-    exits = await occupant_exits(db, blocks.keys(), at)
     for slot in slots:
         front_id = slot.front_slot_id
-        if front_id is None or slot.id not in exits or front_id not in exits:
+        if front_id is None or front_id not in blocks or slot.id not in exits or front_id not in exits:
             continue
         if is_blocked(exits[slot.id], exits[front_id]):
             blocks[slot.id].blocked_by.append(front_id)
             blocks[front_id].blocking.append(slot.id)
     return blocks
+
+
+async def _block_map(db: AsyncSession, slots: list[ParkingSlot], at: datetime) -> dict[int, SlotBlock]:
+    return block_map(slots, await occupant_exits(db, [slot.id for slot in slots], at))
 
 
 async def blocked_by(db: AsyncSession, slot_id: int, at: datetime) -> list[int]:
