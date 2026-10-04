@@ -24,6 +24,7 @@ from app.services import blocking, departures, notifications
 from app.services.exceptions import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from app.services.permissions import NOT_MEMBER_MESSAGE
 from app.services.slot_labels import slot_label
+from app.services.slot_reservations import reserved_slot_ids
 from app.services.vehicles import get_owned_vehicle
 
 SLOT_UNAVAILABLE_MESSAGE = "해당 칸을 사용할 수 없습니다."
@@ -63,7 +64,8 @@ async def create_parking(
     - 내 차량이 아니거나 칸이 없으면 404 NOT_FOUND
     - 다른 빌라 칸이면 403 NOT_BUILDING_MEMBER. 단, 그 칸에 지금 진행 중인 내 수락된 공유가 있으면 주차할 수 있다
     - 이 차가 이미 주차 중이면 409 VEHICLE_ALREADY_PARKED (detail.parking_id)
-    - 비활성 칸·다른 사람의 공유 시간이면 409 SLOT_UNAVAILABLE (detail.reason), 다른 차가 있으면 409 SLOT_OCCUPIED
+    - 비활성 칸이거나 지금부터 내 출차 시각까지 다른 사람의 수락된 공유가 있으면 409 SLOT_UNAVAILABLE (detail.reason),
+      다른 차가 있으면 409 SLOT_OCCUPIED
     """
     now = now or datetime.now(KST)
     exit_at = None if payload.is_long_term else payload.expected_exit_at
@@ -95,7 +97,8 @@ async def create_parking(
     )
     if occupied is not None:
         raise ConflictError("이미 다른 차량이 주차 중인 칸입니다.", code=ErrorCode.SLOT_OCCUPIED)
-    if share is not None and not my_share:
+    # 지금부터 내 출차 시각까지(상시 주차면 그 이후 전부) 다른 사람의 수락된 공유가 있으면 예약된 칸
+    if await reserved_slot_ids(db, [slot.id], now, exit_at, except_requester_id=user.id):
         raise ConflictError(
             SLOT_UNAVAILABLE_MESSAGE, code=ErrorCode.SLOT_UNAVAILABLE, detail={"reason": REASON_RESERVED}
         )
