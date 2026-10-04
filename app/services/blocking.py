@@ -55,11 +55,7 @@ def share_end_at(share: ShareRequest) -> datetime:
 
 async def accepted_share(db: AsyncSession, slot_id: int, at: datetime) -> ShareRequest | None:
     """at 시각에 slot_id 칸에서 진행 중인 수락된 공유 (건우 #12 의 share_requests.accepted_share_at). 없으면 None."""
-    try:
-        return await share_requests.accepted_share_at(db, slot_id, at)
-    except NotImplementedError:
-        # TODO(#12): 건우의 accepted_share_at 이 구현되기 전까지는 외부 차량의 출차 시간을 알 수 없다 → 없음(늦게 나감)으로 본다
-        return None
+    return await share_requests.accepted_share_at(db, slot_id, at)
 
 
 async def occupant_exits(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> dict[int, datetime | None]:
