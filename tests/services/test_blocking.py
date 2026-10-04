@@ -6,7 +6,7 @@ import pytest
 
 from app.models.share_request import ShareRequestStatus
 from app.schemas.common import KST
-from app.services import blocking, share_requests
+from app.services import blocking
 from tests.factories import (
     make_alley,
     make_building,
@@ -142,7 +142,7 @@ async def test_other_building_is_not_in_map(db, lane):
     assert other_slot.id not in blocks
 
 
-async def test_external_car_exit_time_is_share_end(db, lane, monkeypatch):
+async def test_external_car_exit_time_is_share_end(db, lane):
     """외부 차량(공유 이용자)의 출차 시간 = 그 칸에서 진행 중인 수락된 공유의 종료 시각."""
     visitor = await make_resident(db, "visitor@example.com")  # 다른 빌라(소속 없음) 사용자
     visitor_car = await make_vehicle(db, "56다1234", owner=visitor)
@@ -157,15 +157,14 @@ async def test_external_car_exit_time_is_share_end(db, lane, monkeypatch):
     await make_assignment(db, lane["outer"], visitor_car)
     await make_departure(db, lane["my_car"], WED, time(18, 30))
 
-    # #12 전까지 accepted_share_at 은 스텁 → 외부 차량의 출차 시간을 모르므로 늦게 나가는 것으로 본다
-    assert (await _map(db, lane))[0].blocked_by == [lane["outer"].id]
-
-    async def fake_accepted_share_at(db, slot_id, at):
-        return share if slot_id == lane["outer"].id else None
-
-    monkeypatch.setattr(share_requests, "accepted_share_at", fake_accepted_share_at)
     assert (await _map(db, lane))[0].blocked_by == []  # 공유가 17:00 에 끝나고 내 차는 18:30 출차
 
     share.end_hour = 24
+    await db.commit()
     assert blocking.share_end_at(share) == datetime(2026, 10, 1, 0, 0, tzinfo=KST)
+    assert (await _map(db, lane))[0].blocked_by == [lane["outer"].id]
+
+    # 진행 중인 공유가 없으면(공유 시간이 지났는데 아직 서 있는 차) 출차 시간을 모르므로 늦게 나가는 것으로 본다
+    share.start_hour, share.end_hour = 9, 12
+    await db.commit()
     assert (await _map(db, lane))[0].blocked_by == [lane["outer"].id]
