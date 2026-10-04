@@ -94,6 +94,12 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+### 3) 전날 밤 막힘 알림 (cron)
+앱 안에 스케줄러가 없습니다. 운영에서는 외부 cron으로 **매일 22:00 KST**에 아래를 실행합니다. 내일 출차할 차를 막고 있는 차의 주인에게 `BLOCK_ALERT` 알림을 만듭니다.
+```bash
+python -m app.jobs.block_alert
+```
+
 ## 마이그레이션 (Alembic)
 | 리비전 | 내용 |
 |---|---|
