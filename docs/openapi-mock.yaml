@@ -42,7 +42,7 @@ info:
     | 사용자 2 | 박OO · 한빛빌라 관리인 |
     | 사용자 3 | 101동 302호 이웃 · 차량 `34나 5678` (지수 차량을 막고 있음). 다른 입주민에게는 호수 대신 칸 이름·동까지만 보임 |
     | 빌라 3 | 월계 한빛빌라 (= 차고지 3), 초대코드 `HANBIT01`. 주차 구역 4개, 칸 8개: 구역 10 필로티 안쪽(1·2) / 11 필로티 외부(1) / 12 건물 앞(1·2·3) / 13 골목(1·2) |
-    | 빌라 3 공유 조건 | 401 (필로티 외부 1번), 402 (골목 1번). 07~23시, 시간당 2토큰, 최대 4시간 |
+    | 빌라 3 공유 조건 | 401 (P3), 402 (P7). 07~23시, 시간당 2토큰, 최대 4시간 |
     | 빌라 4 | 햇살빌라 (= 차고지 4). 구역 21 골목(칸 2101·2102) / 22 필로티 외부(2103·2104) / 23 건물 앞(2105). 공유 조건 501~505 (07~23시, 시간당 2토큰, 최대 4시간) |
 
     ### 와이어프레임 반영 사항
@@ -56,18 +56,18 @@ info:
     - 이동 요청에 긴급 구분이 없습니다. 이동 요청 수신 화면(#12)의 "긴급 이동 요청" 문구는 일반 "이동 요청" 으로 봅니다
     - 알림 종류는 와이어프레임에 나오는 5가지(막힘·이동 요청·출차 완료·공유 사용 요청·공유 결과)만 둡니다. 전날 밤 사전 알림은 막힘 알림(`BLOCK_ALERT`)에 포함
     - 차고지 등록(#20)의 시간 선택지는 정시 단위, 시작일·종료일 입력은 없음 (등록한 날부터 무기한, 중단은 `is_public=false`)
-    - 이동 요청·막힘 관련 화면과 알림은 익명입니다. 호수·이름 대신 동(`101동 입주민`)이나 칸 이름(`필로티 안쪽 2번 차량`)으로 표시
+    - 이동 요청·막힘 관련 화면과 알림은 익명입니다. 호수·이름 대신 동(`101동 입주민`)이나 칸 이름(`P2 차량`)으로 표시
     - 사용 불가 안내 모달(#11)의 사유는 `관리인이 사용 중지한 칸` 또는 `예약된 상태` (Figma)
 
     ### 열린 질문 — Mock 에서 임시로 정한 값
     | # | 내용 | Mock 에서의 처리 |
     |---|---|---|
     | 1 | 홈 요약 칩 정의 (14-1) | 빈칸=비어 있는 칸, 가능=빈칸+1시간 내 출차, 막힘=막힌 입주민 차량 수 (제안안) |
-    | 2 | 칸 이름 규칙 (14-2) | `주차 구역 이름 + 번호` ("필로티 안쪽 1번"). DB 의 `garages.name` + `parking_slots.number`. Figma 가 이 형식을 씀 (Manyfast 의 `A-1 구역` 은 옛 형식) |
+    | 2 | 칸 이름 규칙 (14-2) | ✅ **확정 (2026-10-03, FE 합의)**: 칸 이름(`label`)은 빌라 안 순번 `P1`, `P2` … (Figma `주차 배치도 SVG` 표기). 순번은 주차 구역 `sort_order` → 칸 `number` 순. 주차 구역(`garages`)은 그대로 두고 화면에는 구역 이름을 쓰지 않음 |
     | 3 | 차량 색상 입력 (14-3) | 색상·별칭 모두 선택 |
     | 4 | 공유 요청 시간 입력 화면 없음 (14-4) | 요청 본문에 `request_date`, `start_hour`, `end_hour` 를 받음 |
     | 5 | 요금 단위 (14-5) | 시간당 토큰 `hourly_price`. Figma 최신본은 "시간당" 으로 고쳐져 있음 (Manyfast 차고지 상세의 "30분당" 은 옛 표기) |
-    | 6 | 탐색 목록 단위 (14-6) | Figma 대로 **칸 단위** ("햇살빌라 · 골목 2번"). 탭하면 그 빌라의 차고지 상세로 이동 |
+    | 6 | 탐색 목록 단위 (14-6) | Figma 대로 **칸 단위** ("햇살빌라 · P2"). 탭하면 그 빌라의 차고지 상세로 이동 |
     | 7 | 온보딩 단계 (14-7) | Figma 최신본은 2단계(건물 합류 → 차량 등록)라 해결됨. `onboarding_step` 은 JOIN_BUILDING → REGISTER_VEHICLE → DONE |
     | 8 | 연락처 비노출 (14-9) vs 기존 "비노출 대상 아님" 기획 결정 | 본인에게만 마스킹 응답, 타인에겐 미제공 |
     | 9 | 와이어프레임 데이터 불일치 | 김지수 동·호수 #10 은 203호, #23 은 202호 → **202호** 사용 |
@@ -80,6 +80,7 @@ info:
     | 16 | 이름만 DB 와 다른 값 | 역할 `ADMIN`(DB `MANAGER`), 공유 요청 `APPROVED`(DB `ACCEPTED`), 대표 차량 `is_default`(DB `is_primary`), 차량 `alias`(DB `nickname`) — Notion 이름을 유지함. 이동 요청 상태는 DB 값(`MOVED`) 을 그대로 씀 |
     | 17 | 알림 종류 | 와이어프레임 기준 5종. DB 는 마이그레이션 0004 로 맞춤 (`DEPARTURE_REMINDER`→`BLOCK_ALERT`, `SHARE_RESPONSE`→`SHARE_RESULT`, `EXIT_DONE` 추가, `MOVE_RESPONSE` 제거) |
     | 18 | 공유 기간 vs 요구사항 | Manyfast 요구사항 R-UWUBSH 는 "이용 가능 **날짜**·시간" 을 등록한다고 하지만 화면에 날짜 입력이 없어 무기한으로 처리 |
+    | 19 | 배치 추천 규칙 (#9) | ✅ **확정 (2026-10-03, 사용자 결정)**: 추천(`RECOMMENDED`)은 **가장 이상적인 칸 한 칸**만. 조건에 맞는 칸이 없으면 추천하지 않음(`RECOMMENDED` 없음). 차가 있는 칸은 새 태그 `OCCUPIED`. 자세한 규칙은 `GET /buildings/{building_id}/slots/recommendations` 설명 참고 |
 servers:
   - url: http://localhost:8000/api/v1
     description: 로컬
@@ -441,7 +442,7 @@ paths:
                     plate: 12가 3456
                     color: 흰색
                     owner: { name: 김지수, unit: 101동 202호 }
-                    parking: { parking_id: 556, slot_id: 1001, slot_label: 필로티 안쪽 1번, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
+                    parking: { parking_id: 556, slot_id: 1001, slot_label: P1, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
                     schedule: { expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL, elapsed_minutes: 370 }
                 ai:
                   summary: AI 추정 출차 (화면 #10 의 "AI 추정" 칩)
@@ -450,7 +451,7 @@ paths:
                     plate: 12가 3456
                     color: 흰색
                     owner: { name: 김지수, unit: 101동 202호 }
-                    parking: { parking_id: 556, slot_id: 1001, slot_label: 필로티 안쪽 1번, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
+                    parking: { parking_id: 556, slot_id: 1001, slot_label: P1, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
                     schedule: { expected_exit_at: "2026-09-30T18:00:00+09:00", exit_source: AI_ESTIMATED, elapsed_minutes: 370 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -549,7 +550,23 @@ paths:
       tags: [parkings]
       summary: 🏠 배치 등록 화면 태그·추천 (#7)
       description: |
-        출차 시간을 바꿀 때마다 다시 호출합니다. 앞 칸(`front_slot_id`) 관계를 따져 막힘이 가장 적은 안쪽 칸을 추천합니다.
+        출차 시간을 바꿀 때마다 다시 호출합니다. 빌라의 모든 칸을 칸 이름 순(`P1`, `P2` …)으로 하나씩 내려주고, 칸마다 태그를 하나 붙입니다.
+
+        **태그** (열린 질문 19, 2026-10-03 확정)
+        - `UNAVAILABLE`: 쓸 수 없는 칸. `unavailable_reason` = `관리인이 사용 중지한 칸이에요`(`is_active=false`) 또는 `예약된 칸이에요`(지금부터 내 출차 시각까지 — 상시 주차면 그 이후 전부 — 수락된 공유가 있음)
+        - `OCCUPIED`: 지금 다른 차가 주차 중인 칸
+        - `RECOMMENDED`: 아래 조건을 만족하는 빈 칸 중 **가장 이상적인 한 칸**. 응답에 최대 1개이고, 조건에 맞는 칸이 없으면 **추천하지 않습니다** (모든 빈 칸이 `EMPTY`)
+        - `EMPTY`: 나머지 빈 칸. 여기 두면 막게 되는 칸이 있으면 `will_block` 에 넣습니다 (없으면 빈 배열)
+
+        **추천 조건** (막힘 규칙은 결정 1, `services/blocking.py`)
+        1. 내가 막히지 않는다: 앞 칸(`front_slot_id`)이 비어 있거나, 앞 칸 차가 내 출차 시각보다 먼저(같거나 이르게) 나간다
+        2. 내가 아무도 막지 않는다: 이 칸을 앞 칸으로 두는 뒤 칸에 차가 없거나, 그 차가 나보다 늦게(같거나) 나간다
+        - 출차 시간이 없는 차(상시 주차·미확인 차량)는 가장 늦게 나가는 것으로 봅니다. 내가 상시 주차(`expected_exit_at` 생략)면 1은 항상 만족합니다
+        - 외부 차량(공유 이용자)의 출차 시각은 수락된 공유의 종료 시각입니다
+
+        **가장 이상적인 칸 고르기**: 조건을 만족하는 칸 중
+        1. 가장 안쪽 칸. 안쪽 = 앞 칸(`front_slot_id`)을 따라 출구까지 거치는 칸 수가 많은 칸
+        2. 같으면 칸 이름 순서가 빠른 칸 (`P` 번호가 작은 칸)
 
         ⚠️ `expected_exit_at` 의 `+` 는 쿼리 문자열에서 공백으로 해석되므로 **`%2B` 로 인코딩**해야 합니다.
       operationId: getSlotRecommendations
@@ -580,9 +597,15 @@ paths:
                     items: { $ref: "#/components/schemas/SlotRecommendation" }
               example:
                 slots:
-                  - { slot_id: 1007, tag: RECOMMENDED, label: 골목 1번 (안쪽), reason: 지금 선 차들보다 늦게 나가서 안쪽이 좋아요 }
-                  - { slot_id: 1008, tag: EMPTY, label: 골목 2번, will_block: [1007] }
-                  - { slot_id: 1005, tag: UNAVAILABLE, label: 건물 앞 2번, unavailable_reason: 관리인이 사용 중지한 칸이에요 }
+                  # 빌라 3, 내일 07:30 출차. P7(1007)의 앞 칸은 P8(1008), 둘 다 비어 있음
+                  - { slot_id: 1001, tag: OCCUPIED, label: P1 }
+                  - { slot_id: 1002, tag: OCCUPIED, label: P2 }
+                  - { slot_id: 1003, tag: OCCUPIED, label: P3 }
+                  - { slot_id: 1004, tag: OCCUPIED, label: P4 }
+                  - { slot_id: 1005, tag: UNAVAILABLE, label: P5, unavailable_reason: 관리인이 사용 중지한 칸이에요 }
+                  - { slot_id: 1006, tag: OCCUPIED, label: P6 }
+                  - { slot_id: 1007, tag: RECOMMENDED, label: P7, reason: 앞 칸이 비어 있고 다른 차를 막지 않는 가장 안쪽 칸이에요 }
+                  - { slot_id: 1008, tag: EMPTY, label: P8, will_block: [] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingMember" }
   /parkings:
@@ -672,7 +695,7 @@ paths:
     post:
       tags: [parkings]
       summary: 🏠 출차 처리
-      description: 같은 빌라 입주민에게 `EXIT_DONE` 알림("건물 앞 1번 비어 있음")을 보냅니다.
+      description: 같은 빌라 입주민에게 `EXIT_DONE` 알림("P4 비어 있음")을 보냅니다.
       operationId: exitParking
       x-priority: 1주차
       parameters:
@@ -836,7 +859,7 @@ paths:
       tags: [garages]
       summary: 👤 공유 주차 탐색 (#13)
       description: |
-        **내 빌라와 같은 골목(alley)에 있는 다른 빌라의 차고지(주차장)** 에서 공개(`is_public=true`)된 공유 조건이 걸린 **칸** 을 하나씩 내려갑니다 (Figma: "햇살빌라 · 골목 2번").
+        **내 빌라와 같은 골목(alley)에 있는 다른 빌라의 차고지(주차장)** 에서 공개(`is_public=true`)된 공유 조건이 걸린 **칸** 을 하나씩 내려갑니다 (Figma: "햇살빌라 · P2").
         항목을 탭하면 `garage_id`(= 빌라 id) 로 차고지 상세를 엽니다.
         입주민 출차 시간 원본은 노출하지 않고 `estimated_free_at` 만 제공합니다.
         필터: `all`(전체) · `now`(즉시 가능) · `reservable`(예약 가능) · `free`(무료, 0토큰)
@@ -863,7 +886,7 @@ paths:
       tags: [garages]
       summary: 👤 차고지 상세 (#14)
       description: |
-        빌라 주차장(차고지)에서 공유 중인 칸과 칸별 공유 조건(`offer`)을 내려줍니다. 여러 주차 구역의 칸이 한 화면에 나옵니다 (Figma: 골목 1번 · 필로티 외부 1번 · 건물 앞 1번).
+        빌라 주차장(차고지)에서 공유 중인 칸과 칸별 공유 조건(`offer`)을 내려줍니다. 여러 주차 구역의 칸이 한 화면에 나옵니다 (예: 햇살빌라 P1 · P3 · P5).
         `garage_id` 는 빌라 id 입니다. 윗부분의 운영 시간·요금·최대 이용은 `summary` 로 내려갑니다.
         "요청하기" 는 고른 칸의 `offer.id` 로 `POST /share-requests` 를 호출합니다.
       operationId: getGarage
@@ -949,13 +972,13 @@ paths:
               examples:
                 pending:
                   summary: "#15 요청 확인 중"
-                  value: { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: P1, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
                 approved:
                   summary: "#16 요청 수락됨"
-                  value: { id: 301, status: APPROVED, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: APPROVED, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: P1, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
                 rejected:
                   summary: "#17 요청 거절됨"
-                  value: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  value: { id: 301, status: REJECTED, reject_reason: 주차 구역 용량 초과, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: P1, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /me/share-requests:
@@ -977,7 +1000,7 @@ paths:
                     items: { $ref: "#/components/schemas/ShareRequestDetail" }
               example:
                 items:
-                  - { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: 골목 1번, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
+                  - { id: 301, status: PENDING, reject_reason: null, garage: { id: 4, name: 햇살빌라 }, slot_id: 2101, slot_label: P1, request_date: "2026-09-30", start_hour: 15, end_hour: 18, total_price: 6 }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ───────────────────────── 관리인 ─────────────────────────
@@ -1098,14 +1121,14 @@ paths:
                     items: { $ref: "#/components/schemas/AdminSlot" }
               example:
                 items:
-                  - { slot_id: 1001, zone_id: 10, number: 1, label: 필로티 안쪽 1번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1002, zone_id: 10, number: 2, label: 필로티 안쪽 2번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1003, zone_id: 11, number: 1, label: 필로티 외부 1번, is_active: true, occupied: true, share_offer_id: 401 }
-                  - { slot_id: 1004, zone_id: 12, number: 1, label: 건물 앞 1번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1005, zone_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
-                  - { slot_id: 1006, zone_id: 12, number: 3, label: 건물 앞 3번, is_active: true, occupied: true, share_offer_id: null }
-                  - { slot_id: 1007, zone_id: 13, number: 1, label: 골목 1번, is_active: true, occupied: false, share_offer_id: 402 }
-                  - { slot_id: 1008, zone_id: 13, number: 2, label: 골목 2번, is_active: true, occupied: false, share_offer_id: null }
+                  - { slot_id: 1001, zone_id: 10, number: 1, label: P1, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1002, zone_id: 10, number: 2, label: P2, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1003, zone_id: 11, number: 1, label: P3, is_active: true, occupied: true, share_offer_id: 401 }
+                  - { slot_id: 1004, zone_id: 12, number: 1, label: P4, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1005, zone_id: 12, number: 2, label: P5, is_active: false, occupied: false, share_offer_id: null }
+                  - { slot_id: 1006, zone_id: 12, number: 3, label: P6, is_active: true, occupied: true, share_offer_id: null }
+                  - { slot_id: 1007, zone_id: 13, number: 1, label: P7, is_active: true, occupied: false, share_offer_id: 402 }
+                  - { slot_id: 1008, zone_id: 13, number: 2, label: P8, is_active: true, occupied: false, share_offer_id: null }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
   /admin/slots/{slot_id}:
@@ -1132,7 +1155,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminSlot" }
-              example: { slot_id: 1005, zone_id: 12, number: 2, label: 건물 앞 2번, is_active: false, occupied: false, share_offer_id: null }
+              example: { slot_id: 1005, zone_id: 12, number: 2, label: P5, is_active: false, occupied: false, share_offer_id: null }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1158,8 +1181,8 @@ paths:
                     items: { $ref: "#/components/schemas/ShareOffer" }
               example:
                 items:
-                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
-                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 401, slot_id: 1003, slot_label: P3, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 402, slot_id: 1007, slot_label: P7, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/NotBuildingAdmin" }
     post:
@@ -1194,8 +1217,8 @@ paths:
                     items: { $ref: "#/components/schemas/ShareOffer" }
               example:
                 items:
-                  - { id: 401, slot_id: 1003, slot_label: 필로티 외부 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
-                  - { id: 402, slot_id: 1007, slot_label: 골목 1번, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 401, slot_id: 1003, slot_label: P3, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
+                  - { id: 402, slot_id: 1007, slot_label: P7, host_id: 2, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요, is_public: true }
         "400":
           description: 검증 실패 (비활성 칸·다른 빌라 칸·시간 범위 오류 등)
           content:
@@ -1457,7 +1480,7 @@ components:
       type: string
       enum: [EMPTY, SOON_EXIT, OCCUPIED, UNAVAILABLE]
       description: 배치도 표시 (EMPTY 빈칸 · SOON_EXIT 곧 출차 · OCCUPIED 사용 중 · UNAVAILABLE 사용 불가)
-    SlotTag: { type: string, enum: [RECOMMENDED, EMPTY, UNAVAILABLE] }
+    SlotTag: { type: string, enum: [RECOMMENDED, EMPTY, OCCUPIED, UNAVAILABLE], description: "배치 추천 태그. RECOMMENDED 는 응답에 최대 1개 (열린 질문 19)" }
     OccupantType:
       type: string
       enum: [RESIDENT, EXTERNAL, UNKNOWN]
@@ -1577,7 +1600,7 @@ components:
                   properties:
                     id: { type: integer }
                     number: { type: integer, minimum: 1, description: 주차 구역 안 번호 (구역 안에서 유일) }
-                    label: { type: string, description: 주차 구역 이름 + 번호 }
+                    label: { type: string, description: "칸 이름. 빌라 안 순번 P1, P2 … (주차 구역 sort_order → number 순)" }
                     front_slot_id: { type: [integer, "null"], description: 이 칸 바로 앞(출구 쪽) 칸. 없으면 null }
                     is_active: { type: boolean, description: false 면 사용 불가 칸 }
                     rect:
@@ -1598,29 +1621,29 @@ components:
             zone_type: PILOTI_IN
             sort_order: 0
             slots:
-              - { id: 1001, number: 1, label: 필로티 안쪽 1번, front_slot_id: 1002, is_active: true, rect: { x0: 4.0, y0: 0.0, x1: 6.5, y1: 5.0 } }
-              - { id: 1002, number: 2, label: 필로티 안쪽 2번, front_slot_id: null, is_active: true, rect: { x0: 4.0, y0: 5.0, x1: 6.5, y1: 10.0 } }
+              - { id: 1001, number: 1, label: P1, front_slot_id: 1002, is_active: true, rect: { x0: 4.0, y0: 0.0, x1: 6.5, y1: 5.0 } }
+              - { id: 1002, number: 2, label: P2, front_slot_id: null, is_active: true, rect: { x0: 4.0, y0: 5.0, x1: 6.5, y1: 10.0 } }
           - id: 11
             name: 필로티 외부
             zone_type: PILOTI_OUT
             sort_order: 1
             slots:
-              - { id: 1003, number: 1, label: 필로티 외부 1번, front_slot_id: null, is_active: true, rect: { x0: 7.0, y0: 0.0, x1: 9.5, y1: 5.0 } }
+              - { id: 1003, number: 1, label: P3, front_slot_id: null, is_active: true, rect: { x0: 7.0, y0: 0.0, x1: 9.5, y1: 5.0 } }
           - id: 12
             name: 건물 앞
             zone_type: PILOTI_OUT
             sort_order: 2
             slots:
-              - { id: 1004, number: 1, label: 건물 앞 1번, front_slot_id: 1005, is_active: true, rect: { x0: 0.0, y0: 11.0, x1: 2.5, y1: 16.0 } }
-              - { id: 1005, number: 2, label: 건물 앞 2번, front_slot_id: null, is_active: false, rect: { x0: 0.0, y0: 16.0, x1: 2.5, y1: 21.0 } }
-              - { id: 1006, number: 3, label: 건물 앞 3번, front_slot_id: null, is_active: true, rect: { x0: 3.0, y0: 11.0, x1: 5.5, y1: 16.0 } }
+              - { id: 1004, number: 1, label: P4, front_slot_id: 1005, is_active: true, rect: { x0: 0.0, y0: 11.0, x1: 2.5, y1: 16.0 } }
+              - { id: 1005, number: 2, label: P5, front_slot_id: null, is_active: false, rect: { x0: 0.0, y0: 16.0, x1: 2.5, y1: 21.0 } }
+              - { id: 1006, number: 3, label: P6, front_slot_id: null, is_active: true, rect: { x0: 3.0, y0: 11.0, x1: 5.5, y1: 16.0 } }
           - id: 13
             name: 골목
             zone_type: ROADSIDE
             sort_order: 3
             slots:
-              - { id: 1007, number: 1, label: 골목 1번, front_slot_id: 1008, is_active: true, rect: { x0: 10.0, y0: 11.0, x1: 12.5, y1: 16.0 } }
-              - { id: 1008, number: 2, label: 골목 2번, front_slot_id: null, is_active: true, rect: { x0: 10.0, y0: 16.0, x1: 12.5, y1: 21.0 } }
+              - { id: 1007, number: 1, label: P7, front_slot_id: 1008, is_active: true, rect: { x0: 10.0, y0: 11.0, x1: 12.5, y1: 16.0 } }
+              - { id: 1008, number: 2, label: P8, front_slot_id: null, is_active: true, rect: { x0: 10.0, y0: 16.0, x1: 12.5, y1: 21.0 } }
     SlotStatus:
       type: object
       properties:
@@ -1705,14 +1728,14 @@ components:
         my_parking:
           parking_id: 556
           vehicle: { id: 7, plate: 12가 3456, color: 흰색 }
-          slot_label: 필로티 안쪽 1번
+          slot_label: P1
           state: PARKED
           expected_exit_at: "2026-09-30T18:30:00+09:00"
-        block_alert: { blocking_parking_id: 555, message: 내 차량이 필로티 안쪽 2번 차량에 의해 막혀 있습니다. }
+        block_alert: { blocking_parking_id: 555, message: 내 차량이 P2 차량에 의해 막혀 있습니다. }
         admin: null
         recent_notifications:
           - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 101동 입주민, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
-          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: false, created_at: "2026-09-30T14:30:00+09:00" }
+          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: P4 비어 있음, link: null, is_read: false, created_at: "2026-09-30T14:30:00+09:00" }
 
     # ── 차량 ──
     VehicleListItem:
@@ -1778,9 +1801,9 @@ components:
         slot_id: { type: integer }
         tag: { $ref: "#/components/schemas/SlotTag" }
         label: { type: string }
-        reason: { type: string }
-        will_block: { type: array, items: { type: integer }, description: 이 칸에 두면 막게 되는 칸 }
-        unavailable_reason: { type: string }
+        reason: { type: string, description: "RECOMMENDED 일 때만. 추천 이유" }
+        will_block: { type: array, items: { type: integer }, description: "EMPTY 일 때만. 이 칸에 두면 막게 되는 칸 id" }
+        unavailable_reason: { type: string, description: "UNAVAILABLE 일 때만" }
     ParkingCreate:
       type: object
       required: [slot_id, vehicle_id]
@@ -1830,19 +1853,19 @@ components:
         status: PENDING
         requested_at: "2026-09-30T14:34:00+09:00"
         requester: { label: 101동 입주민 }
-        my_vehicle: { plate: 34나 5678, slot_label: 필로티 안쪽 2번, parked_at: "2026-09-30T12:10:00+09:00" }
-        blocked_vehicle: { plate: 12가 3456, slot_label: 필로티 안쪽 1번, needed_at: "2026-09-30T15:00:00+09:00" }
+        my_vehicle: { plate: 34나 5678, slot_label: P2, parked_at: "2026-09-30T12:10:00+09:00" }
+        blocked_vehicle: { plate: 12가 3456, slot_label: P1, needed_at: "2026-09-30T15:00:00+09:00" }
         reason: 외출 예정으로 출차가 필요합니다. 차량 이동을 부탁드립니다.
 
     # ── 공유 주차 (이용자) ──
     GarageListItem:
       type: object
-      description: 공유 칸 하나 (Figma "햇살빌라 · 골목 2번")
+      description: 공유 칸 하나 (Figma "햇살빌라 · P2")
       properties:
         garage_id: { type: integer, description: 차고지 id = 빌라 id }
         building_name: { type: string }
         slot_id: { type: integer }
-        slot_label: { type: string, description: 주차 구역 이름 + 번호 }
+        slot_label: { type: string, description: "칸 이름. 빌라 안 순번 P1, P2 … (주차 구역 sort_order → number 순)" }
         title: { type: string, description: "목록 표시용 (빌라 이름 · 칸 이름)" }
         availability: { $ref: "#/components/schemas/GarageAvailability" }
         hourly_price: { type: integer, description: "시간당 토큰. 0 = 무료" }
@@ -1861,11 +1884,11 @@ components:
         next_cursor: { type: [string, "null"] }
       example:
         items:
-          - { garage_id: 4, building_name: 햇살빌라, slot_id: 2102, slot_label: 골목 2번, title: 햇살빌라 · 골목 2번, availability: AVAILABLE, hourly_price: 2, info: 지금 이용 가능 · 07:00~23:00 }
-          - { garage_id: 5, building_name: 초록빌라, slot_id: 2201, slot_label: 건물 앞 1번, title: 초록빌라 · 건물 앞 1번, availability: SOON_EXIT, hourly_price: 2, estimated_free_at: "2026-09-30T15:30:00+09:00", estimate_source: AI_ESTIMATED }
-          - { garage_id: 6, building_name: 미래빌라, slot_id: 2305, slot_label: 필로티 안쪽 5번, title: 미래빌라 · 필로티 안쪽 5번, availability: RESERVABLE, hourly_price: 1, available_from: "2026-10-01T09:00:00+09:00", info: 내일 09:00부터 이용 가능 }
-          - { garage_id: 7, building_name: 하늘빌라, slot_id: 2403, slot_label: 필로티 외부 3번, title: 하늘빌라 · 필로티 외부 3번, availability: AVAILABLE, hourly_price: 0, max_hours: 2, weekdays_only: true, info: 무료 · 최대 2시간 · 평일만 }
-          - { garage_id: 8, building_name: 푸른빌라, slot_id: 2501, slot_label: 건물 앞 1번, title: 푸른빌라 · 건물 앞 1번, availability: UNAVAILABLE, hourly_price: 1, info: 현재 이용 불가 }
+          - { garage_id: 4, building_name: 햇살빌라, slot_id: 2102, slot_label: P2, title: 햇살빌라 · P2, availability: AVAILABLE, hourly_price: 2, info: 지금 이용 가능 · 07:00~23:00 }
+          - { garage_id: 5, building_name: 초록빌라, slot_id: 2201, slot_label: P1, title: 초록빌라 · P1, availability: SOON_EXIT, hourly_price: 2, estimated_free_at: "2026-09-30T15:30:00+09:00", estimate_source: AI_ESTIMATED }
+          - { garage_id: 6, building_name: 미래빌라, slot_id: 2305, slot_label: P5, title: 미래빌라 · P5, availability: RESERVABLE, hourly_price: 1, available_from: "2026-10-01T09:00:00+09:00", info: 내일 09:00부터 이용 가능 }
+          - { garage_id: 7, building_name: 하늘빌라, slot_id: 2403, slot_label: P3, title: 하늘빌라 · P3, availability: AVAILABLE, hourly_price: 0, max_hours: 2, weekdays_only: true, info: 무료 · 최대 2시간 · 평일만 }
+          - { garage_id: 8, building_name: 푸른빌라, slot_id: 2501, slot_label: P1, title: 푸른빌라 · P1, availability: UNAVAILABLE, hourly_price: 1, info: 현재 이용 불가 }
         next_cursor: null
     ShareOfferSummary:
       type: object
@@ -1903,7 +1926,7 @@ components:
               slot_id: { type: integer }
               zone: { type: object, properties: { id: { type: integer }, name: { type: string } }, description: "주차 구역 (DB garages)" }
               number: { type: integer }
-              label: { type: string, description: 주차 구역 이름 + 번호 }
+              label: { type: string, description: "칸 이름. 빌라 안 순번 P1, P2 … (주차 구역 sort_order → number 순)" }
               state: { $ref: "#/components/schemas/GarageSlotState" }
               estimated_free_at: { type: [string, "null"], format: date-time }
               in_use_until: { type: [string, "null"], format: date-time }
@@ -1915,11 +1938,11 @@ components:
         alley: { id: 1, name: 광운로19가길 }
         summary: { start_hour: 7, end_hour: 23, min_hourly_price: 2, max_hours: 4 }
         slots:
-          - { slot_id: 2101, zone: { id: 21, name: 골목 }, number: 1, label: 골목 1번, state: AVAILABLE, offer: { id: 501, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2102, zone: { id: 21, name: 골목 }, number: 2, label: 골목 2번, state: SOON_EXIT, estimated_free_at: "2026-09-30T14:30:00+09:00", offer: { id: 502, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2103, zone: { id: 22, name: 필로티 외부 }, number: 1, label: 필로티 외부 1번, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2104, zone: { id: 22, name: 필로티 외부 }, number: 2, label: 필로티 외부 2번, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
-          - { slot_id: 2105, zone: { id: 23, name: 건물 앞 }, number: 1, label: 건물 앞 1번, state: AVAILABLE, offer: { id: 505, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2101, zone: { id: 21, name: 골목 }, number: 1, label: P1, state: AVAILABLE, offer: { id: 501, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2102, zone: { id: 21, name: 골목 }, number: 2, label: P2, state: SOON_EXIT, estimated_free_at: "2026-09-30T14:30:00+09:00", offer: { id: 502, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2103, zone: { id: 22, name: 필로티 외부 }, number: 1, label: P3, state: IN_USE, in_use_until: "2026-09-30T21:00:00+09:00", offer: { id: 503, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2104, zone: { id: 22, name: 필로티 외부 }, number: 2, label: P4, state: IN_USE, in_use_until: "2026-09-30T18:30:00+09:00", offer: { id: 504, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
+          - { slot_id: 2105, zone: { id: 23, name: 건물 앞 }, number: 1, label: P5, state: AVAILABLE, offer: { id: 505, weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN], start_hour: 7, end_hour: 23, hourly_price: 2, max_hours: 4, memo: 이용 후 칸 비워주세요 } }
     ShareRequestCreate:
       type: object
       required: [offer_id, request_date, start_hour, end_hour]
@@ -2001,13 +2024,13 @@ components:
       example:
         building: { id: 3, name: 월계 한빛빌라 }
         pending_requests:
-          - { id: 303, requester: { name: 박○○, temperature: 38.5 }, slot_label: 골목 1번, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, created_at: "2026-09-30T14:39:00+09:00" }
-          - { id: 301, requester: { name: 홍○○, temperature: 36.5 }, slot_label: 골목 1번, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, created_at: "2026-09-30T14:10:00+09:00" }
+          - { id: 303, requester: { name: 박○○, temperature: 38.5 }, slot_label: P7, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, created_at: "2026-09-30T14:39:00+09:00" }
+          - { id: 301, requester: { name: 홍○○, temperature: 36.5 }, slot_label: P7, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, created_at: "2026-09-30T14:10:00+09:00" }
         realtime:
           available_count: 3
           vehicles:
-            - { slot_id: 1003, slot_label: 필로티 외부 1번, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true }
-            - { slot_id: 1006, slot_label: 건물 앞 3번, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false }
+            - { slot_id: 1003, slot_label: P3, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true }
+            - { slot_id: 1006, slot_label: P6, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false }
         congestion:
           total_slots: 8
           days:
@@ -2048,12 +2071,12 @@ components:
       example:
         counts: { PENDING: 4, APPROVED: 7, REJECTED: 2 }
         items:
-          - { id: 301, requester: { name: 홍길동, unit: 101동 201호 }, plate: 21가 3456, slot_label: 골목 1번, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, status: PENDING }
-          - { id: 302, requester: { name: 이수진, unit: 102동 302호 }, plate: 34나 7890, slot_label: 필로티 외부 1번, request_date: "2026-10-02", start_hour: 15, end_hour: 19, total_price: 8, status: PENDING }
-          - { id: 303, requester: { name: 박민준, unit: 103동 101호 }, plate: 56다 1234, slot_label: 골목 1번, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, status: PENDING }
-          - { id: 304, requester: { name: 김지영, unit: 101동 403호 }, plate: 78라 5678, slot_label: 필로티 외부 1번, request_date: "2026-10-03", start_hour: 14, end_hour: 17, total_price: 6, status: PENDING }
-          - { id: 305, requester: { name: 최성우, unit: 102동 202호 }, plate: 123가 4634, slot_label: 필로티 외부 1번, request_date: "2026-09-30", start_hour: 13, end_hour: 17, total_price: 8, status: APPROVED }
-          - { id: 306, requester: { name: 정다은, unit: 103동 304호 }, plate: 23바 6789, slot_label: 골목 1번, request_date: "2026-09-29", start_hour: 16, end_hour: 20, total_price: 8, status: REJECTED }
+          - { id: 301, requester: { name: 홍길동, unit: 101동 201호 }, plate: 21가 3456, slot_label: P7, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, status: PENDING }
+          - { id: 302, requester: { name: 이수진, unit: 102동 302호 }, plate: 34나 7890, slot_label: P3, request_date: "2026-10-02", start_hour: 15, end_hour: 19, total_price: 8, status: PENDING }
+          - { id: 303, requester: { name: 박민준, unit: 103동 101호 }, plate: 56다 1234, slot_label: P7, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, status: PENDING }
+          - { id: 304, requester: { name: 김지영, unit: 101동 403호 }, plate: 78라 5678, slot_label: P3, request_date: "2026-10-03", start_hour: 14, end_hour: 17, total_price: 6, status: PENDING }
+          - { id: 305, requester: { name: 최성우, unit: 102동 202호 }, plate: 123가 4634, slot_label: P3, request_date: "2026-09-30", start_hour: 13, end_hour: 17, total_price: 8, status: APPROVED }
+          - { id: 306, requester: { name: 정다은, unit: 103동 304호 }, plate: 23바 6789, slot_label: P7, request_date: "2026-09-29", start_hour: 16, end_hour: 20, total_price: 8, status: REJECTED }
         next_cursor: null
     AdminSlot:
       type: object
@@ -2109,7 +2132,7 @@ components:
       example:
         id: 401
         slot_id: 1003
-        slot_label: 필로티 외부 1번
+        slot_label: P3
         host_id: 2
         weekdays: [MON, TUE, WED, THU, FRI, SAT, SUN]
         start_hour: 7
@@ -2154,9 +2177,9 @@ components:
         next_cursor: { type: [string, "null"] }
       example:
         items:
-          - { id: 92, type: BLOCK_ALERT, title: 막힘 알림, body: 내 차량이 필로티 안쪽 2번 차량에 의해 막혀 있습니다., link: { screen: HOME, id: null }, is_read: false, created_at: "2026-09-30T14:20:00+09:00" }
+          - { id: 92, type: BLOCK_ALERT, title: 막힘 알림, body: 내 차량이 P2 차량에 의해 막혀 있습니다., link: { screen: HOME, id: null }, is_read: false, created_at: "2026-09-30T14:20:00+09:00" }
           - { id: 91, type: MOVE_REQUEST, title: 주차 요청 도착, body: 101동 입주민, link: { screen: MOVE_REQUEST, id: 44 }, is_read: false, created_at: "2026-09-30T14:39:00+09:00" }
-          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: 건물 앞 1번 비어 있음, link: null, is_read: true, created_at: "2026-09-30T14:30:00+09:00" }
+          - { id: 90, type: EXIT_DONE, title: 출차 완료 안내, body: P4 비어 있음, link: null, is_read: true, created_at: "2026-09-30T14:30:00+09:00" }
           - { id: 85, type: BLOCK_ALERT, title: 내일 출차 안내, body: 내 차량이 내일 07:30 출차하는 차량을 막고 있어요, link: { screen: HOME, id: null }, is_read: true, created_at: "2026-09-29T22:30:00+09:00" }
           - { id: 80, type: SHARE_RESULT, title: 공유 요청이 거절되었어요, body: 주차 구역 용량 초과, link: { screen: SHARE_REQUEST, id: 301 }, is_read: true, created_at: "2026-09-29T17:00:00+09:00" }
         next_cursor: null

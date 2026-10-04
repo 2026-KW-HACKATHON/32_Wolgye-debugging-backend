@@ -1,0 +1,45 @@
+name: Swagger Pages
+
+# docs/ 의 Swagger 명세(openapi-mock.yaml + swagger-mock.html)만 GitHub Pages 로 배포한다.
+# 배포 주소: https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/openapi-mock.yaml
+      - docs/swagger-mock.html
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp docs/swagger-mock.html _site/index.html
+          cp docs/openapi-mock.yaml _site/openapi-mock.yaml
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

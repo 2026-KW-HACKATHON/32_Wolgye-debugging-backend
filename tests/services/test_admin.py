@@ -126,7 +126,7 @@ async def test_dashboard_congestion_realtime_and_pending(db):
     item = dash.pending_requests[0]
     assert item.requester.name == "박○○"
     assert item.requester.temperature == 38.5
-    assert item.slot_label == "골목 2번"
+    assert item.slot_label == "P4"  # 필로티 안쪽 1·2 → P1·P2, 골목 1·2 → P3·P4
     assert item.total_price == 8
 
     vehicles = {v.slot_id: v for v in dash.realtime.vehicles}
@@ -136,7 +136,7 @@ async def test_dashboard_congestion_realtime_and_pending(db):
     assert vehicles[s2.id].can_request_move is False
     assert vehicles[s2.id].plate == "45다 6789"
     assert vehicles[s3.id].occupant_type == OccupantType.EXTERNAL
-    assert vehicles[s3.id].slot_label == "골목 1번"
+    assert vehicles[s3.id].slot_label == "P3"
     assert dash.realtime.available_count == 1  # s4
 
     peaks = {d.date: d.peak_occupied for d in dash.congestion.days}

@@ -171,7 +171,7 @@ async def test_detail_not_parked_and_parked(db):
     await make_departure(db, vehicle, WED, time(18, 30))
     parked = await vehicles.get_my_vehicle(db, user, vehicle.id, now=NOW)
     assert parked.parking.parking_id == assignment.id
-    assert parked.parking.slot_label == "필로티 안쪽 1번"
+    assert parked.parking.slot_label == "P1"
     assert parked.schedule.expected_exit_at == datetime(2026, 9, 30, 18, 30, tzinfo=KST)
     assert parked.schedule.exit_source == ExitSource.MANUAL
     assert parked.schedule.elapsed_minutes == 370
