@@ -21,9 +21,9 @@ from app.schemas.common import KST
 from app.schemas.my_vehicle import ExitSource, ParkingState
 from app.schemas.parking import ParkingCreate, ParkingCreated, ParkingExited, ParkingSchedule, ParkingScheduleUpdate
 from app.services import blocking, departures, notifications
-from app.services.admin import slot_label
 from app.services.exceptions import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from app.services.permissions import NOT_MEMBER_MESSAGE
+from app.services.slot_labels import slot_label
 from app.services.vehicles import get_owned_vehicle
 
 SLOT_UNAVAILABLE_MESSAGE = "해당 칸을 사용할 수 없습니다."
@@ -200,14 +200,12 @@ async def exit_parking(db: AsyncSession, user: Resident, parking_id: int, now: d
     assignment.is_active = False
     assignment.released_at = now
 
-    number, garage_name, building_id = (
-        await db.execute(
-            select(ParkingSlot.number, Garage.name, Garage.building_id)
-            .join(Garage, Garage.id == ParkingSlot.garage_id)
-            .where(ParkingSlot.id == assignment.slot_id)
-        )
-    ).one()
-    body = f"{slot_label(garage_name, number)} 비어 있음"
+    building_id = await db.scalar(
+        select(Garage.building_id)
+        .join(ParkingSlot, ParkingSlot.garage_id == Garage.id)
+        .where(ParkingSlot.id == assignment.slot_id)
+    )
+    body = f"{await slot_label(db, assignment.slot_id)} 비어 있음"
     neighbor_ids = await db.scalars(
         select(Resident.id).where(Resident.building_id == building_id, Resident.id != user.id)
     )
