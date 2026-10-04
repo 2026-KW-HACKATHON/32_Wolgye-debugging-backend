@@ -188,6 +188,29 @@ async def test_other_building_slot_needs_my_accepted_share(db, lane):
     assert created.slot_id == lane["outer"].id
 
 
+async def test_slot_reserved_later_before_my_exit_is_unavailable(db, lane):
+    """지금은 비어 있어도 내 출차 시각 전에 수락된 공유가 시작되면 예약된 칸. 출차가 그보다 이르면 세울 수 있다."""
+    visitor = await make_resident(db, "visitor@example.com")
+    host = await make_resident(db, "host@example.com", lane["building"])
+    offer = await make_share_offer(db, lane["outer"], host)
+    share = await make_share_request(db, offer, visitor, ShareRequestStatus.ACCEPTED, start_hour=17, end_hour=19)
+    share.request_date = TODAY
+    await db.commit()
+
+    with pytest.raises(ConflictError) as reserved:  # 18:30 출차 → 17~19시 공유와 겹침
+        await parkings.create_parking(db, lane["me"], _create(lane["outer"], lane["my_car"]), now=NOW)
+    assert reserved.value.detail == {"reason": "예약된 상태"}
+
+    long_term = ParkingCreate(slot_id=lane["outer"].id, vehicle_id=lane["my_car"].id, is_long_term=True)
+    with pytest.raises(ConflictError):  # 상시 주차는 이후 공유가 하나라도 있으면 안 됨
+        await parkings.create_parking(db, lane["me"], long_term, now=NOW)
+
+    early = await parkings.create_parking(
+        db, lane["me"], _create(lane["outer"], lane["my_car"], expected_exit_at=_at(17)), now=NOW
+    )
+    assert early.slot_id == lane["outer"].id  # 17:00 출차 → 공유 시작 전에 나감
+
+
 # ── 출차 일정 수정 ──
 async def test_update_schedule_replaces_exit_time(db, lane):
     created = await parkings.create_parking(db, lane["me"], _create(lane["inner"], lane["my_car"]), now=NOW)
