@@ -13,7 +13,7 @@ from app.models.share_request import ShareRequestStatus
 from app.schemas.common import KST
 from app.schemas.my_vehicle import ExitSource, ParkingState
 from app.schemas.parking import ParkingCreate, ParkingScheduleUpdate
-from app.services import parkings, share_requests
+from app.services import parkings
 from app.services.exceptions import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from tests.factories import (
     make_alley,
@@ -161,7 +161,7 @@ async def test_create_errors(db, lane):
     assert set(parked.value.detail) == {"parking_id"}
 
 
-async def test_other_building_slot_needs_my_accepted_share(db, lane, monkeypatch):
+async def test_other_building_slot_needs_my_accepted_share(db, lane):
     """다른 빌라 칸은 403. 그 칸에서 진행 중인 내 수락된 공유가 있으면 주차할 수 있고, 남의 공유 시간이면 입주민도 못 세운다."""
     other = await make_building(db, "INV002", "옆 빌라", alley=await make_alley(db, "다른 골목"))
     visitor = await make_resident(db, "visitor@example.com", other)
@@ -174,11 +174,8 @@ async def test_other_building_slot_needs_my_accepted_share(db, lane, monkeypatch
     host = await make_resident(db, "host@example.com", lane["building"])
     offer = await make_share_offer(db, lane["outer"], host)
     share = await make_share_request(db, offer, visitor, ShareRequestStatus.ACCEPTED, start_hour=13, end_hour=17)
-
-    async def fake_accepted_share_at(db, slot_id, at):
-        return share if slot_id == lane["outer"].id else None
-
-    monkeypatch.setattr(share_requests, "accepted_share_at", fake_accepted_share_at)
+    share.request_date = TODAY  # 지금(14:40) 진행 중인 공유
+    await db.commit()
 
     with pytest.raises(ConflictError) as reserved:  # 입주민이라도 남의 공유 시간에는 세울 수 없다
         await parkings.create_parking(db, lane["me"], _create(lane["outer"], lane["my_car"]), now=NOW)
@@ -283,7 +280,7 @@ async def test_exit_releases_and_notifies_neighbors(db, lane):
     # 같은 빌라 입주민에게만, 본인은 제외
     sent = await _notifications(db)
     assert [(n.resident_id, n.type, n.title, n.body) for n in sent] == [
-        (lane["neighbor"].id, NotificationType.EXIT_DONE, "출차 완료 안내", "필로티 안쪽 1번 비어 있음")
+        (lane["neighbor"].id, NotificationType.EXIT_DONE, "출차 완료 안내", "P1 비어 있음")
     ]
 
     with pytest.raises(NotFoundError):  # 두 번 출차할 수 없다

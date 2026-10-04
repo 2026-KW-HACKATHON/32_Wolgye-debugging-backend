@@ -70,7 +70,7 @@ async def test_create_parking(client, setup):
     # 차량 상세에도 주차 위치와 출차 예정이 보인다
     detail = await client.get(f"/api/v1/me/vehicles/{setup['my_car'].id}", headers=auth_headers(setup["me"]))
     assert detail.json()["parking"]["parking_id"] == body["id"]
-    assert detail.json()["parking"]["slot_label"] == "필로티 안쪽 1번"
+    assert detail.json()["parking"]["slot_label"] == "P1"
     assert detail.json()["schedule"]["expected_exit_at"] == exit_at
     assert detail.json()["schedule"]["exit_source"] == "MANUAL"
 
@@ -219,7 +219,7 @@ async def test_exit(client, setup):
     # 같은 빌라 입주민에게 출차 완료 알림, 차량은 다시 "외부 출차"
     items = (await client.get("/api/v1/notifications", headers=auth_headers(setup["neighbor"]))).json()["items"]
     assert [(n["type"], n["title"], n["body"], n["link"]) for n in items] == [
-        ("EXIT_DONE", "출차 완료 안내", "필로티 안쪽 1번 비어 있음", None)
+        ("EXIT_DONE", "출차 완료 안내", "P1 비어 있음", None)
     ]
     vehicles = (await client.get("/api/v1/me/vehicles", headers=auth_headers(setup["me"]))).json()["items"]
     assert vehicles[0]["status"] == "OUT"
