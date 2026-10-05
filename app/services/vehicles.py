@@ -200,6 +200,7 @@ async def get_my_vehicle(
             expected_exit_at=departure.at if departure else None,
             exit_source=departure.source if departure else ExitSource.NONE,
             elapsed_minutes=max(0, int((now - assignment.assigned_at).total_seconds() // 60)),
+            memo=departure.memo if departure else None,
         )
 
     return VehicleDetail(
