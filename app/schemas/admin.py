@@ -57,6 +57,7 @@ class CongestionDay(BaseModel):
 
 
 class Congestion(BaseModel):
+    month: str  # 조회한 달 "YYYY-MM" (KST). 쿼리 month 를 생략하면 이번 달
     total_slots: int
     days: list[CongestionDay]
 

@@ -44,6 +44,7 @@ async def test_dashboard_ok(client, setup):
     assert body["building"] == {"id": b.id, "name": b.name}
     assert body["pending_requests"] == []
     assert body["realtime"] == {"available_count": 2, "vehicles": []}
+    assert body["congestion"]["month"] == "2020-01"
     assert body["congestion"]["total_slots"] == 2
     assert len(body["congestion"]["days"]) == 31
     assert body["congestion"]["days"][0] == {"date": "2020-01-01", "peak_occupied": 0}
