@@ -1,5 +1,6 @@
 """#8 주차 배치·출차 일정·출차 서비스 규칙."""
 
+import asyncio
 from datetime import date, datetime, time
 
 import pytest
@@ -209,6 +210,27 @@ async def test_slot_reserved_later_before_my_exit_is_unavailable(db, lane):
         db, lane["me"], _create(lane["outer"], lane["my_car"], expected_exit_at=_at(17)), now=NOW
     )
     assert early.slot_id == lane["outer"].id  # 17:00 출차 → 공유 시작 전에 나감
+
+
+async def test_concurrent_parking_on_same_slot_confirms_only_one(db, lane, session_factory):
+    """두 사람이 같은 칸에 동시에 배치하면 한 건만 확정된다 (Manyfast: 칸 중복 배치 0건)."""
+
+    async def park(user, vehicle):
+        async with session_factory() as session:
+            try:
+                await parkings.create_parking(session, user, _create(lane["outer"], vehicle), now=NOW)
+                return "ok"
+            except ConflictError as exc:
+                return exc.code
+
+    results = await asyncio.gather(
+        park(lane["me"], lane["my_car"]), park(lane["neighbor"], lane["neighbor_car"])
+    )
+    assert sorted(results) == sorted(["ok", ErrorCode.SLOT_OCCUPIED])
+    active = await db.scalars(
+        select(ParkingAssignment).where(ParkingAssignment.slot_id == lane["outer"].id, ParkingAssignment.is_active)
+    )
+    assert len(active.all()) == 1
 
 
 # ── 출차 일정 수정 ──

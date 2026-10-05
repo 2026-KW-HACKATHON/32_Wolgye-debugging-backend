@@ -42,7 +42,7 @@ from app.services.exceptions import ForbiddenError
 from app.services.permissions import NOT_MEMBER_MESSAGE
 from app.services.slot_labels import slot_label
 
-RECENT_NOTIFICATIONS = 3
+RECENT_NOTIFICATIONS = 2  # 와이어프레임 홈 화면의 "최근 알림" 카드 수
 
 
 def summarize(snap: BuildingSnapshot, now: datetime) -> HomeSummary:
