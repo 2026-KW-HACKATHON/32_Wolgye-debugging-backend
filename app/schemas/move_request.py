@@ -55,6 +55,7 @@ class MoveRequestDetail(BaseModel):
     id: int
     status: MoveRequestStatusName
     requested_at: KstDatetime
+    responded_at: KstDatetime | None  # "옮겼어요"를 누른 시각. PENDING 이면 null
     requester: MoveRequester
     my_vehicle: RequestedVehicle
     blocked_vehicle: BlockedVehicle | None  # 관리인이 외부 차량에 보낸 요청처럼 막힌 차가 없으면 null

@@ -168,6 +168,7 @@ async def get_detail(db: AsyncSession, user: Resident, move_request_id: int) -> 
         id=move_request.id,
         status=api_name(move_request.status),
         requested_at=move_request.created_at,
+        responded_at=move_request.responded_at,
         requester=MoveRequester(label=anonymous_label(requester.unit_no)),
         my_vehicle=RequestedVehicle(
             plate=target.plate_no,
