@@ -9,7 +9,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,25 +85,7 @@ def departure_on(rows: Iterable[DepartureSchedule], day: date) -> Departure | No
 _RECURRING_LOOKAHEAD_DAYS = 7
 
 
-async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> Departure | None:
-    """vehicle_id 차량의 다음 출차 예정: 오늘(KST) 것이 있으면 시각이 지났어도 오늘 것, 없으면 가장 가까운 이후 날짜의 것.
-
-    지난 날짜의 일회성 행은 보지 않는다. 없으면 None.
-    """
-    today = now.astimezone(KST).date()
-    rows = list(
-        (
-            await db.scalars(
-                select(DepartureSchedule).where(
-                    DepartureSchedule.vehicle_id == vehicle_id,
-                    or_(
-                        DepartureSchedule.scheduled_date >= today,
-                        func.cardinality(DepartureSchedule.repeat_weekdays) > 0,
-                    ),
-                )
-            )
-        ).all()
-    )
+def _next_from_rows(rows: list[DepartureSchedule], today: date) -> Departure | None:
     days = {row.scheduled_date for row in rows if not _is_recurring(row)}
     if any(_is_recurring(row) for row in rows):
         days.update(today + timedelta(days=i) for i in range(_RECURRING_LOOKAHEAD_DAYS))
@@ -112,6 +94,41 @@ async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> De
         if departure is not None:
             return departure
     return None
+
+
+async def next_departures(db: AsyncSession, vehicle_ids: Iterable[int], now: datetime) -> dict[int, Departure]:
+    """차량별 다음 출차 예정 (vehicle_id → Departure). 예정이 없는 차량은 결과에 없다.
+
+    다음 출차 예정 = 오늘(KST) 것이 있으면 시각이 지났어도 오늘 것, 없으면 가장 가까운 이후 날짜의 것.
+    지난 날짜의 일회성 행은 보지 않는다.
+    """
+    ids = list(vehicle_ids)
+    if not ids:
+        return {}
+    today = now.astimezone(KST).date()
+    rows = await db.scalars(
+        select(DepartureSchedule).where(
+            DepartureSchedule.vehicle_id.in_(ids),
+            or_(
+                DepartureSchedule.scheduled_date >= today,
+                func.cardinality(DepartureSchedule.repeat_weekdays) > 0,
+            ),
+        )
+    )
+    by_vehicle: dict[int, list[DepartureSchedule]] = {}
+    for row in rows.all():
+        by_vehicle.setdefault(row.vehicle_id, []).append(row)
+    result = {}
+    for vehicle_id, vehicle_rows in by_vehicle.items():
+        departure = _next_from_rows(vehicle_rows, today)
+        if departure is not None:
+            result[vehicle_id] = departure
+    return result
+
+
+async def next_departure(db: AsyncSession, vehicle_id: int, now: datetime) -> Departure | None:
+    """vehicle_id 차량의 다음 출차 예정 (규칙은 next_departures). 없으면 None."""
+    return (await next_departures(db, [vehicle_id], now)).get(vehicle_id)
 
 
 # ── 반복 출차 일정 (차량당 하나: repeat_weekdays 가 비어 있지 않은 행) ─────────
@@ -143,12 +160,10 @@ async def get_recurring(db: AsyncSession, user: Resident, vehicle_id: int) -> Re
     return _to_recurring(row)
 
 
-async def put_recurring(
-    db: AsyncSession, user: Resident, vehicle_id: int, payload: RecurringSchedule, now: datetime | None = None
-) -> RecurringSchedule:
-    """반복 출차 일정을 설정한다. 이미 있으면 그 행을 바꾼다. `scheduled_date` = 설정한 날(KST)."""
-    vehicle_id = await _owned_vehicle_id(db, user, vehicle_id)
-    today = (now or datetime.now(KST)).astimezone(KST).date()
+async def set_recurring(
+    db: AsyncSession, vehicle_id: int, weekdays: list[int], at: time, memo: str | None, today: date
+) -> DepartureSchedule:
+    """vehicle_id 차량의 반복 일정을 weekdays(0=월~6=일)·at 으로 맞춘다. 이미 있으면 그 행을 바꾼다. commit 하지 않는다."""
     rows = list((await db.scalars(_recurring_rows(vehicle_id))).all())
     if rows:
         row, extras = rows[0], rows[1:]
@@ -158,10 +173,20 @@ async def put_recurring(
         row = DepartureSchedule(vehicle_id=vehicle_id)
         db.add(row)
     row.scheduled_date = today
-    row.scheduled_time = payload.time
-    row.repeat_weekdays = weekdays_to_db(payload.days)
+    row.scheduled_time = at
+    row.repeat_weekdays = weekdays
     row.is_ai_estimated = False
-    row.memo = payload.memo
+    row.memo = memo
+    return row
+
+
+async def put_recurring(
+    db: AsyncSession, user: Resident, vehicle_id: int, payload: RecurringSchedule, now: datetime | None = None
+) -> RecurringSchedule:
+    """반복 출차 일정을 설정한다. 이미 있으면 그 행을 바꾼다. `scheduled_date` = 설정한 날(KST)."""
+    vehicle_id = await _owned_vehicle_id(db, user, vehicle_id)
+    today = (now or datetime.now(KST)).astimezone(KST).date()
+    row = await set_recurring(db, vehicle_id, weekdays_to_db(payload.days), payload.time, payload.memo, today)
     await db.commit()
     await db.refresh(row)
     return _to_recurring(row)
@@ -176,3 +201,29 @@ async def delete_recurring(db: AsyncSession, user: Resident, vehicle_id: int) ->
         )
     )
     await db.commit()
+
+
+# ── 주차 건의 출차 예정 (#8) ───────────────────────────────────────────
+async def set_one_off(
+    db: AsyncSession, vehicle_id: int, exit_at: datetime, memo: str | None, now: datetime
+) -> DepartureSchedule:
+    """지금 주차 건의 출차 예정을 exit_at 으로 맞춘다. commit 하지 않는다.
+
+    이 차량이 직접 입력한 오늘(KST) 이후의 일회성 일정은 이전 주차 건이나 수정 전 값이므로 지우고 새로 넣는다
+    (날짜가 바뀌어도 예전 값이 남아 우선하지 않도록). 반복 일정과 AI 추정 행은 그대로 둔다.
+    """
+    today = now.astimezone(KST).date()
+    await db.execute(
+        delete(DepartureSchedule).where(
+            DepartureSchedule.vehicle_id == vehicle_id,
+            DepartureSchedule.scheduled_date >= today,
+            func.cardinality(DepartureSchedule.repeat_weekdays) == 0,
+            DepartureSchedule.is_ai_estimated.is_(False),
+        )
+    )
+    local = exit_at.astimezone(KST)
+    row = DepartureSchedule(
+        vehicle_id=vehicle_id, scheduled_date=local.date(), scheduled_time=local.time().replace(tzinfo=None), memo=memo
+    )
+    db.add(row)
+    return row
