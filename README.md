@@ -100,6 +100,13 @@ uvicorn app.main:app --reload
 python -m app.jobs.block_alert
 ```
 
+### 4) 시연용 시드 데이터
+FE 연결·시연용으로 명세 Mock 시나리오(월계 한빛빌라 `HANBIT01`·햇살빌라, 계정 6개)를 넣습니다. 계정 목록은 `app/jobs/seed_demo.py` 맨 위에 있고 비밀번호는 모두 `chagok1234`입니다. 이미 들어가 있으면 건너뜁니다.
+```bash
+alembic upgrade head
+python -m app.jobs.seed_demo
+```
+
 ## 마이그레이션 (Alembic)
 | 리비전 | 내용 |
 |---|---|
