@@ -73,6 +73,7 @@ async def test_create_parking(client, setup):
     assert detail.json()["parking"]["slot_label"] == "P1"
     assert detail.json()["schedule"]["expected_exit_at"] == exit_at
     assert detail.json()["schedule"]["exit_source"] == "MANUAL"
+    assert detail.json()["schedule"]["memo"] == "출근"  # 배치할 때 적은 메모 (#33)
 
 
 async def test_create_long_term(client, setup):
@@ -166,6 +167,14 @@ async def test_update_schedule(client, setup):
         "exit_source": "MANUAL",
         "memo": "늦게 출근",
     }
+
+    # 출차 일정 수정 화면에서 다시 볼 수 있다 (#33). 메모 없이 수정하면 비워진다
+    url = f"/api/v1/me/vehicles/{setup['my_car'].id}"
+    assert (await client.get(url, headers=auth_headers(setup["me"]))).json()["schedule"]["memo"] == "늦게 출근"
+    await client.put(
+        f"{BASE}/{parking['id']}/schedule", json={"expected_exit_at": new_exit}, headers=auth_headers(setup["me"])
+    )
+    assert (await client.get(url, headers=auth_headers(setup["me"]))).json()["schedule"]["memo"] is None
 
 
 async def test_update_schedule_earlier_sends_block_alert(client, setup):
