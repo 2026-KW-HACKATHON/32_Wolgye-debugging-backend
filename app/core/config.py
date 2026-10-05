@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     env: str = "local"
     api_v1_prefix: str = "/api/v1"
 
+    # CORS (#36): 브라우저에서 API 를 부를 수 있는 FE 출처. .env 에서는 JSON 배열로 준다
+    # 예) CORS_ORIGINS=["http://localhost:5173","https://chagok.example.com"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
     database_url: str = "postgresql+asyncpg://chagok:chagok@localhost:5432/chagok"
     database_url_sync: str = "postgresql+psycopg2://chagok:chagok@localhost:5432/chagok"
 
