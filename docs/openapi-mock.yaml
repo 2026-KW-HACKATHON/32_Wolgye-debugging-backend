@@ -443,7 +443,7 @@ paths:
                     color: 흰색
                     owner: { name: 김지수, unit: 101동 202호 }
                     parking: { parking_id: 556, slot_id: 1001, slot_label: P1, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
-                    schedule: { expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL, elapsed_minutes: 370 }
+                    schedule: { expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL, elapsed_minutes: 370, memo: 출근 }
                 ai:
                   summary: AI 추정 출차 (화면 #10 의 "AI 추정" 칩)
                   value:
@@ -452,7 +452,7 @@ paths:
                     color: 흰색
                     owner: { name: 김지수, unit: 101동 202호 }
                     parking: { parking_id: 556, slot_id: 1001, slot_label: P1, entered_at: "2026-09-30T08:30:00+09:00", state: PARKED }
-                    schedule: { expected_exit_at: "2026-09-30T18:00:00+09:00", exit_source: AI_ESTIMATED, elapsed_minutes: 370 }
+                    schedule: { expected_exit_at: "2026-09-30T18:00:00+09:00", exit_source: AI_ESTIMATED, elapsed_minutes: 370, memo: null }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
@@ -615,6 +615,7 @@ paths:
       description: |
         - `is_long_term=true`(상시 주차) 면 `expected_exit_at` 을 생략할 수 있습니다
         - `repeat_weekdays=true`(평일 반복) 면 평일(월~금) 같은 시각으로 반복 일정을 함께 만듭니다. 요일을 직접 고르려면 #9 API 사용
+        - `repeat_weekdays=false` 는 "이번에 반복 일정을 새로 만들지 않는다"는 뜻입니다. **이미 있는 반복 일정은 그대로 둡니다.** 지우려면 `DELETE /me/vehicles/{vehicle_id}/recurring-schedule`
         - 사용 불가 칸 → 409 `SLOT_UNAVAILABLE` + `detail.reason` → **사용 불가 안내 모달(#11)**. 사유는 `관리인이 사용 중지한 칸`(`is_active=false`) 또는 `예약된 상태`(그 시간에 수락된 공유 요청이 있음)
         - 동시성: 해당 칸과 앞·뒤 칸을 `SELECT ... FOR UPDATE` 로 잠근 뒤 재검증
       operationId: createParking
@@ -1784,6 +1785,7 @@ components:
             expected_exit_at: { type: [string, "null"], format: date-time }
             exit_source: { $ref: "#/components/schemas/ExitSource" }
             elapsed_minutes: { type: integer, description: 입차 후 경과 시간(분) }
+            memo: { type: [string, "null"], description: "출차 예정에 적어 둔 메모 (배치·출차 일정 수정 때 입력). 출차 예정이 없으면 null" }
     RecurringSchedule:
       type: object
       required: [days, time]
@@ -1835,6 +1837,7 @@ components:
         id: { type: integer }
         status: { $ref: "#/components/schemas/MoveRequestStatus" }
         requested_at: { type: string, format: date-time }
+        responded_at: { type: [string, "null"], format: date-time, description: "\"옮겼어요\"를 누른 시각. PENDING 이면 null" }
         requester: { type: object, properties: { label: { type: string } } }
         my_vehicle:
           type: object
@@ -1853,6 +1856,7 @@ components:
         id: 44
         status: PENDING
         requested_at: "2026-09-30T14:34:00+09:00"
+        responded_at: null
         requester: { label: 101동 입주민 }
         my_vehicle: { plate: 34나 5678, slot_label: P2, parked_at: "2026-09-30T12:10:00+09:00" }
         blocked_vehicle: { plate: 12가 3456, slot_label: P1, needed_at: "2026-09-30T15:00:00+09:00" }

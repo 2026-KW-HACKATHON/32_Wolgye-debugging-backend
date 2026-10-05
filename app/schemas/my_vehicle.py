@@ -110,6 +110,7 @@ class VehicleSchedule(BaseModel):
     expected_exit_at: KstDatetime | None
     exit_source: ExitSource
     elapsed_minutes: int
+    memo: str | None  # 출차 예정에 적어 둔 메모. 출차 예정이 없으면 null
 
 
 class VehicleDetail(BaseModel):

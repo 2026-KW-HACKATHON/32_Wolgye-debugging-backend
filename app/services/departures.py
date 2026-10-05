@@ -54,6 +54,7 @@ class Departure:
 
     at: datetime  # Asia/Seoul
     source: ExitSource
+    memo: str | None = None  # 그 일정에 적어 둔 메모
 
 
 def _is_recurring(row: DepartureSchedule) -> bool:
@@ -78,7 +79,9 @@ def departure_on(rows: Iterable[DepartureSchedule], day: date) -> Departure | No
     if not candidates:
         return None
     best = max(candidates, key=lambda r: (not r.is_ai_estimated, not _is_recurring(r), r.created_at, r.id))
-    return Departure(at=datetime.combine(day, best.scheduled_time, tzinfo=KST), source=exit_source(best))
+    return Departure(
+        at=datetime.combine(day, best.scheduled_time, tzinfo=KST), source=exit_source(best), memo=best.memo
+    )
 
 
 # 반복 일정은 일주일 안에 반드시 한 번 돌아온다
