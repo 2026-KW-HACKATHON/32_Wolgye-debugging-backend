@@ -168,7 +168,10 @@ async def test_detail_for_receiver_and_requester(client, villa):
     res = await client.get(f"{API}/move-requests/{created['id']}", headers=auth_headers(villa["neighbor"]))
     assert res.status_code == 200, res.text
     body = res.json()
-    assert set(body) == {"id", "status", "requested_at", "requester", "my_vehicle", "blocked_vehicle", "reason"}
+    assert set(body) == {
+        "id", "status", "requested_at", "responded_at", "requester", "my_vehicle", "blocked_vehicle", "reason",
+    }  # fmt: skip
+    assert body["responded_at"] is None  # 아직 PENDING
     assert (body["id"], body["status"], body["reason"]) == (created["id"], "PENDING", "외출 예정으로 출차가 필요합니다.")
     assert body["requested_at"].endswith("+09:00")
     assert body["requester"] == {"label": "101동 입주민"}  # 동까지만
@@ -213,6 +216,10 @@ async def test_done(client, db, villa):
         select(MoveRequest).where(MoveRequest.id == created["id"]).execution_options(populate_existing=True)
     )
     assert saved.status == MoveRequestStatus.MOVED and saved.responded_at is not None
+
+    # 처리 완료 화면에 다시 들어와도 옮긴 시각을 알 수 있다 (#33)
+    detail = (await client.get(f"{API}/move-requests/{created['id']}", headers=auth_headers(villa["me"]))).json()
+    assert (detail["status"], detail["responded_at"]) == ("MOVED", body["responded_at"])
 
     # 결정 2: "옮겼어요" 때는 요청자에게 알림을 보내지 않는다
     assert (await client.get(f"{API}/notifications", headers=auth_headers(villa["me"]))).json()["items"] == []
