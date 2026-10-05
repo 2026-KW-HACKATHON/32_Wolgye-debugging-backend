@@ -1009,6 +1009,7 @@ paths:
       tags: [admin]
       summary: 🛠 관리자 대시보드 (#18)
       description: |
+        - `congestion.month` 는 조회한 달(`YYYY-MM`, KST)입니다. 쿼리 `month` 를 생략하면 서버 기준 이번 달이고, FE 는 "9월 혼잡도" 같은 표시에 이 값을 씁니다
         - `congestion.days[].peak_occupied` 는 하루 중 가장 붐빈 시간의 점유 칸 수입니다 (총 8칸)
         - `ai_insight` 는 향후 기능이라 지금은 항상 `null` 입니다 (FE 는 "AI 분석 (향후)" 카드를 고정 표시)
         - 요청자 이름은 `박○○` 처럼 마스킹됩니다
@@ -2012,6 +2013,7 @@ components:
         congestion:
           type: object
           properties:
+            month: { type: string, pattern: '^\d{4}-\d{2}$', description: '조회한 달 (KST). 쿼리 month 생략 시 이번 달', example: "2026-09" }
             total_slots: { type: integer }
             days:
               type: array
@@ -2032,6 +2034,7 @@ components:
             - { slot_id: 1003, slot_label: P3, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true }
             - { slot_id: 1006, slot_label: P6, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false }
         congestion:
+          month: "2026-09"
           total_slots: 8
           days:
             - { date: "2026-09-21", peak_occupied: 6 }

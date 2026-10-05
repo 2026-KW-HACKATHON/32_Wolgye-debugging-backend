@@ -140,12 +140,17 @@ async def test_dashboard_congestion_realtime_and_pending(db):
     assert dash.realtime.available_count == 1  # s4
 
     peaks = {d.date: d.peak_occupied for d in dash.congestion.days}
+    assert dash.congestion.month == "2026-10"
     assert dash.congestion.total_slots == 4
     assert list(peaks) == [date(2026, 10, 1), date(2026, 10, 2)]  # 이번 달은 오늘(KST)까지
     assert peaks[date(2026, 10, 1)] == 1  # 10~12 시 외부 차, 20 시부터 미확인 차 → 겹치지 않음
     assert peaks[date(2026, 10, 2)] == 2  # 미확인 + 입주민
 
     past = await admin_service.get_dashboard(db, building.id, "2026-09", now=now)
+    assert past.congestion.month == "2026-09"
     assert len(past.congestion.days) == 30  # 지난달은 전체
+    current = await admin_service.get_dashboard(db, building.id, None, now=now)
+    assert current.congestion.month == "2026-10"  # month 생략 → 이번 달(KST)
     future = await admin_service.get_dashboard(db, building.id, "2026-11", now=now)
+    assert future.congestion.month == "2026-11"
     assert future.congestion.days == []  # 미래 달

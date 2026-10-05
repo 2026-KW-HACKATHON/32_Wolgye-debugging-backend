@@ -112,9 +112,10 @@ async def _congestion(db: AsyncSession, building_id: int, year: int, month: int,
         select(func.count(ParkingSlot.id)).join(Garage).where(Garage.building_id == building_id)
     )
     today = now.astimezone(KST).date()
+    label = f"{year:04d}-{month:02d}"
     days = [day for day in _month_days(year, month) if day <= today]
     if not days:  # 미래 달
-        return Congestion(total_slots=total_slots or 0, days=[])
+        return Congestion(month=label, total_slots=total_slots or 0, days=[])
     month_start, _ = _day_bounds(days[0])
     _, month_end = _day_bounds(days[-1])
     rows = await db.execute(
@@ -129,7 +130,7 @@ async def _congestion(db: AsyncSession, building_id: int, year: int, month: int,
     )
     # 아직 주차 중인 차는 지금까지만 점유한 것으로 본다
     intervals = [(assigned, released or now) for assigned, released in rows.all()]
-    return Congestion(total_slots=total_slots or 0, days=daily_peaks(intervals, year, month, until=today))
+    return Congestion(month=label, total_slots=total_slots or 0, days=daily_peaks(intervals, year, month, until=today))
 
 
 # ── 대시보드 ──────────────────────────────────────────────────────────
