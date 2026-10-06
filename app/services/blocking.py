@@ -101,7 +101,7 @@ async def occupants(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> 
         exit_at, source = None, ExitSource.NONE
         if kind is OccupantType.RESIDENT and vehicle.id in next_exits:
             exit_at, source = next_exits[vehicle.id].at, next_exits[vehicle.id].source
-        elif kind is OccupantType.EXTERNAL and not assignment.is_permanent:
+        elif kind is OccupantType.EXTERNAL:  # 공유 이용자는 상시 주차여도 공유 시간이 끝나면 나가야 한다
             share = await accepted_share(db, assignment.slot_id, at)
             exit_at = share_end_at(share) if share else None
         result[assignment.slot_id] = Occupant(assignment, vehicle, kind, exit_at, source)

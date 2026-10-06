@@ -168,3 +168,18 @@ async def test_external_car_exit_time_is_share_end(db, lane):
     share.start_hour, share.end_hour = 9, 12
     await db.commit()
     assert (await _map(db, lane))[0].blocked_by == [lane["outer"].id]
+
+
+async def test_external_car_parked_long_term_still_leaves_at_share_end(db, lane):
+    """공유 이용자는 상시 주차로 세워도 공유 시간이 끝나면 나가야 한다 → 출차 시간 = 공유 종료 시각 (#15)."""
+    visitor = await make_resident(db, "visitor@example.com")
+    visitor_car = await make_vehicle(db, "56다1234", owner=visitor)
+    host = await make_resident(db, "host@example.com", lane["building"])
+    offer = await make_share_offer(db, lane["outer"], host)
+    share = await make_share_request(db, offer, visitor, ShareRequestStatus.ACCEPTED, start_hour=13, end_hour=17)
+    share.request_date = WED
+    await db.commit()
+    await make_assignment(db, lane["outer"], visitor_car, is_permanent=True)
+
+    exits = await blocking.occupant_exits(db, [lane["outer"].id], NOW)
+    assert exits == {lane["outer"].id: _at(17)}
