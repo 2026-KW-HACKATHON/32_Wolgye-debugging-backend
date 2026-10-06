@@ -1,11 +1,11 @@
 """관리인 대시보드·칸 설정·미확인 차량 (#14) 요청·응답 스키마. 명세 AdminDashboard / AdminSlot."""
 
 import enum
-from datetime import date, datetime
+from datetime import date
 
 from pydantic import BaseModel
 
-from app.schemas.common import PlateIn
+from app.schemas.common import KstDatetime, PlateIn
 
 
 class OccupantType(enum.StrEnum):
@@ -35,7 +35,7 @@ class PendingRequestItem(BaseModel):
     start_hour: int
     end_hour: int
     total_price: int
-    created_at: datetime
+    created_at: KstDatetime
 
 
 class RealtimeVehicle(BaseModel):
