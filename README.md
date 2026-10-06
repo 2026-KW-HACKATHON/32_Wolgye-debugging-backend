@@ -125,17 +125,26 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 - 새 모델은 **`app/models/__init__.py`에 반드시 import 해 주세요.** 빠뜨리면 앱 실행 중 relationship 문자열 참조가 해석되지 않아 500 오류가 나고, Alembic도 새 테이블을 인식하지 못합니다.
 
 ## API
-- `GET  /health`
-- `GET|POST /api/v1/alleys`, `GET /api/v1/alleys/{id}`
-- `GET|POST /api/v1/buildings`, `GET /api/v1/buildings/{id}`
-- `GET|POST /api/v1/parking-slots?building_id=`, `GET /api/v1/parking-slots/{id}`
-- `GET|POST /api/v1/vehicles`, `GET /api/v1/vehicles/{id}`
-- `GET|POST /api/v1/departures?vehicle_id=`, `GET /api/v1/departures/{id}`
-- `GET|POST /api/v1/share-offers?slot_id=&public_only=`, `GET /api/v1/share-offers/{id}`
-- `GET|POST /api/v1/share-requests?status=`
-- `POST /api/v1/share-requests/{id}/decision`: 관리자 수락/거절. `status`는 `accepted`/`rejected`, `reject_reason`은 선택. 수락하면 토큰이 이동
+명세 `docs/openapi-mock.yaml`의 **45개 엔드포인트가 모두 구현**되어 있습니다. 자세한 요청·응답은 [명세 페이지](https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/)나 서버 실행 후 http://localhost:8000/docs 에서 봅니다. 모든 경로 앞에 `/api/v1`이 붙습니다 (`/health` 제외).
 
-차고지, 이동 요청, 토큰 충전·선물, 인증 API는 아직 없습니다. 구현할 때는 `docs/db-design-issues.md` 5장의 체크리스트를 참고하세요.
+| 태그 | 엔드포인트 | 이슈 |
+|---|---|---|
+| auth | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/password-reset` | #6 |
+| users | `GET` · `PATCH /users/me` | #6 |
+| buildings | `POST /buildings/join`, `GET /buildings/{id}/layout`, `/status`, `/slots/recommendations` | #6, #9 |
+| home | `GET /me/home` | #9 |
+| vehicles | `GET` · `POST /me/vehicles`, `GET` · `PATCH` · `DELETE /me/vehicles/{id}`, `GET` · `PUT` · `DELETE /me/vehicles/{id}/recurring-schedule` | #7 |
+| parkings | `POST /parkings`, `PUT /parkings/{id}/schedule`, `POST /parkings/{id}/exit` | #8 |
+| move-requests | `POST /move-requests`, `GET /move-requests/{id}`, `POST /move-requests/{id}/done`, `GET /me/move-requests` | #10 |
+| garages | `GET /garages`, `GET /garages/{id}` | #12 |
+| share-requests | `POST /share-requests`, `GET /share-requests/{id}`, `GET /me/share-requests` | #12 |
+| admin | `GET` · `POST /admin/buildings/{id}/share-offers`, `PATCH` · `DELETE /admin/share-offers/{id}`, `GET /admin/buildings/{id}/share-requests`, `PATCH /admin/share-requests/{id}`, `GET /admin/buildings/{id}/dashboard`, `GET /admin/buildings/{id}/slots`, `PATCH /admin/slots/{id}`, `POST /admin/buildings/{id}/unknown-vehicles` | #13, #14 |
+| notifications | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` | #11 |
+| health | `GET /health` | — |
+
+- 인증은 `Authorization: Bearer <access_token>` (access 30분, refresh 14일). 에러는 모두 `{"error": {"code", "message", "detail"}}`
+- 명세 이전에 있던 구 API(`/alleys`, `/share-offers` 등)는 #15에서 삭제했습니다
+- 전날 밤 막힘 알림은 API가 아니라 따로 실행하는 작업입니다 (위 "실행"의 3번)
 
 ### Swagger 명세서 (Mock 데이터)
 서버나 DB 없이 API 명세를 볼 수 있습니다. **Figma 와이어프레임을 기준으로, Notion "차곡차곡 API 명세 v0.2"를 초안 삼아 만든 설계 명세**이고, 45개 엔드포인트의 예시 요청·응답과 에러 코드를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
