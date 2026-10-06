@@ -1784,8 +1784,12 @@ components:
       properties:
         id: { type: integer }
         plate: { type: string }
-        color: { type: [string, "null"] }
-        owner: { type: object, properties: { name: { type: string }, unit: { type: string } } }
+        color: { oneOf: [{ $ref: "#/components/schemas/VehicleColor" }, { type: "null" }], description: 등록할 때 고른 색상. 고르지 않았으면 null }
+        owner:
+          type: object
+          properties:
+            name: { type: string, description: 이름. 프로필에 이름이 없으면 닉네임 }
+            unit: { type: [string, "null"], description: 동·호수. 프로필에 없으면 null }
         parking:
           type: [object, "null"]
           properties:
