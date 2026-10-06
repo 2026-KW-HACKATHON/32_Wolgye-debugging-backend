@@ -29,10 +29,11 @@ from app.models.parking_slot import ParkingSlot
 from app.models.resident import Resident
 from app.models.share_offer import ShareOffer
 from app.schemas.common import KST, to_kst
-from app.services.departure_lookup import ExitSource, SlotOccupancy, slot_occupancy
+from app.schemas.my_vehicle import ExitSource
 from app.services.exceptions import InvalidInputError, NotFoundError
 from app.services.pagination import DEFAULT_LIMIT, CursorPage, parse_cursor
 from app.services.slot_labels import building_slot_labels, slot_labels
+from app.services.slot_occupancy import SlotOccupancy, slot_occupancy
 
 GarageFilter = Literal["all", "now", "reservable", "free"]
 WEEKDAYS = {0, 1, 2, 3, 4}
