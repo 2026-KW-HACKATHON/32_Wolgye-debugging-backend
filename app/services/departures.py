@@ -1,4 +1,4 @@
-"""출차 예정. 구 API(/departures)용 함수와, 명세 API(#7~#9)가 쓰는 출차 예정 조회·반복 일정.
+"""출차 예정. 명세 API(#7~#9)가 쓰는 출차 예정 조회·반복 일정.
 
 출차 예정 조회 규칙 (docs/db-design-issues.md 2-2, 결정 10):
 - 날짜 하나에 적용되는 행 = 그 날짜의 일회성 행 + 반복 행(`scheduled_date` 이후, `repeat_weekdays` 요일)
@@ -18,33 +18,8 @@ from app.core.weekdays import weekdays_from_db, weekdays_to_db
 from app.models.departure_schedule import DepartureSchedule
 from app.models.resident import Resident
 from app.schemas.common import KST
-from app.schemas.departure_schedule import DepartureScheduleCreate
 from app.schemas.my_vehicle import ExitSource, RecurringSchedule
 from app.services.exceptions import NotFoundError
-
-
-# ── 구 API (#15에서 삭제) ──────────────────────────────────────────────
-async def list_departures(db: AsyncSession, vehicle_id: int | None = None) -> list[DepartureSchedule]:
-    stmt = select(DepartureSchedule)
-    if vehicle_id is not None:
-        stmt = stmt.where(DepartureSchedule.vehicle_id == vehicle_id)
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def create_departure(db: AsyncSession, payload: DepartureScheduleCreate) -> DepartureSchedule:
-    schedule = DepartureSchedule(**payload.model_dump())
-    db.add(schedule)
-    await db.commit()
-    await db.refresh(schedule)
-    return schedule
-
-
-async def get_departure(db: AsyncSession, schedule_id: int) -> DepartureSchedule:
-    schedule = await db.get(DepartureSchedule, schedule_id)
-    if not schedule:
-        raise NotFoundError("Departure schedule not found")
-    return schedule
 
 
 # ── 출차 예정 조회 ─────────────────────────────────────────────────────

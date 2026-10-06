@@ -1,4 +1,4 @@
-"""차량. 구 API(/vehicles)용 함수와, 명세 API `/me/vehicles`(#7)용 함수.
+"""차량. 명세 API `/me/vehicles`(#7)용 함수.
 
 명세 ↔ DB 이름: plate ↔ plate_no, alias ↔ nickname, is_default ↔ is_primary.
 """
@@ -25,34 +25,12 @@ from app.schemas.my_vehicle import (
     VehicleSchedule,
     VehicleStatus,
 )
-from app.schemas.vehicle import VehicleCreate
 from app.services import departures
 from app.services.exceptions import ConflictError, NotFoundError
 from app.services.slot_labels import slot_label
 
 STATUS_TEXT = {VehicleStatus.PARKED: "현재 주차 중", VehicleStatus.OUT: "외부 출차"}
 PLATE_EXISTS_MESSAGE = "이미 등록된 차량 번호입니다."
-
-
-# ── 구 API (#15에서 삭제) ──────────────────────────────────────────────
-async def list_vehicles(db: AsyncSession) -> list[Vehicle]:
-    result = await db.execute(select(Vehicle))
-    return list(result.scalars().all())
-
-
-async def create_vehicle(db: AsyncSession, payload: VehicleCreate) -> Vehicle:
-    vehicle = Vehicle(**payload.model_dump())
-    db.add(vehicle)
-    await db.commit()
-    await db.refresh(vehicle)
-    return vehicle
-
-
-async def get_vehicle(db: AsyncSession, vehicle_id: int) -> Vehicle:
-    vehicle = await db.get(Vehicle, vehicle_id)
-    if not vehicle:
-        raise NotFoundError("Vehicle not found")
-    return vehicle
 
 
 # ── 내 차량 (#7) ──────────────────────────────────────────────────────
