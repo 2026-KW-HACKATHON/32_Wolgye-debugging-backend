@@ -5,7 +5,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,8 +32,7 @@ from app.services import blocking
 from app.services.blocking import Occupant, SlotBlock
 from app.services.exceptions import NotFoundError
 from app.services.slot_labels import building_slot_labels
-
-SOON_EXIT_WINDOW = timedelta(hours=1)  # 결정 13
+from app.services.slot_occupancy import SOON_EXIT_WINDOW
 
 
 @dataclass

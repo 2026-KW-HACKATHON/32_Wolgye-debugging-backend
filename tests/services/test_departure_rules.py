@@ -1,11 +1,12 @@
-"""출차 예정 조회 (services/departure_lookup.py). 규칙은 PR #22 의 services/departures.py 와 같다."""
+"""출차 예정 조회 규칙 (services/departures.py). #15 에서 departure_lookup.py 를 합치면서 옮겨 온 테스트."""
 
 from datetime import UTC, date, datetime, time
 
 import pytest
 
 from app.schemas.common import KST
-from app.services.departure_lookup import ExitSource, next_departure, next_departures
+from app.schemas.my_vehicle import ExitSource
+from app.services.departures import next_departure, next_departures
 from tests.factories import make_resident, make_vehicle
 from tests.factories_share import make_departure
 
