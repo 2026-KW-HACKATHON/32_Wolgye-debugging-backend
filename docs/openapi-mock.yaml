@@ -505,6 +505,9 @@ paths:
     get:
       tags: [vehicles]
       summary: 👤 반복 출차 일정 조회 (#9)
+      description: |
+        **반복 일정이 없으면 404 `NOT_FOUND`** 입니다 (200 + `null` 이 아님). 화면은 404 를 "반복 일정 없음"으로 보여 주면 됩니다.
+        내 차량이 아니거나 없는 차량도 똑같이 404 입니다.
       operationId: getRecurringSchedule
       x-priority: 2주차
       responses:
@@ -514,7 +517,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RecurringSchedule" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          description: 반복 일정이 없음 / 내 차량이 아님
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: NOT_FOUND, message: 반복 출차 일정이 없습니다., detail: null } }
     put:
       tags: [vehicles]
       summary: 👤 반복 출차 일정 설정 (#9)
@@ -1776,8 +1784,12 @@ components:
       properties:
         id: { type: integer }
         plate: { type: string }
-        color: { type: [string, "null"] }
-        owner: { type: object, properties: { name: { type: string }, unit: { type: string } } }
+        color: { oneOf: [{ $ref: "#/components/schemas/VehicleColor" }, { type: "null" }], description: 등록할 때 고른 색상. 고르지 않았으면 null }
+        owner:
+          type: object
+          properties:
+            name: { type: string, description: 이름. 프로필에 이름이 없으면 닉네임 }
+            unit: { type: [string, "null"], description: 동·호수. 프로필에 없으면 null }
         parking:
           type: [object, "null"]
           properties:
@@ -1848,16 +1860,18 @@ components:
         requester: { type: object, properties: { label: { type: string } } }
         my_vehicle:
           type: object
+          description: 이동을 요청받은 차량
           properties:
             plate: { type: string }
-            slot_label: { type: string }
-            parked_at: { type: string, format: date-time }
+            slot_label: { type: [string, "null"], description: 지금 주차 중이 아니면(이미 출차) null }
+            parked_at: { type: [string, "null"], format: date-time, description: 지금 주차 중이 아니면 null }
         blocked_vehicle:
-          type: object
+          type: [object, "null"]
+          description: 막힌 차량 (요청자가 요청할 때 이 빌라에 세워 둔 차). 요청자가 차를 세워 두지 않았거나 관리인이 외부 차량에 보낸 요청이면 null
           properties:
             plate: { type: string }
-            slot_label: { type: string }
-            needed_at: { type: string, format: date-time }
+            slot_label: { type: [string, "null"], description: 지금 주차 중이 아니면 null }
+            needed_at: { type: [string, "null"], format: date-time }
         reason: { type: [string, "null"] }
       example:
         id: 44
