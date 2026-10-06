@@ -52,9 +52,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            ${{ steps.image.outputs.uri }}
-            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest
+          # 커밋 sha 태그만 올린다. 배포는 항상 sha 로 하고, 덮어쓰는 태그(latest)는
+          # ECR "태그 변경 불가능" 설정에서 두 번째 배포부터 push 가 실패한다
+          tags: ${{ steps.image.outputs.uri }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
