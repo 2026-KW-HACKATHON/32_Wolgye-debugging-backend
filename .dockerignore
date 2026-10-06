@@ -1,0 +1,18 @@
+# 이미지에 넣지 않는 것. 특히 .env(로컬 비밀값)가 COPY . . 로 들어가지 않게 한다
+.env
+.env.*
+.venv/
+venv/
+.git/
+.github/
+.claude/
+tests/
+docs/
+deploy/
+docker-compose*.yml
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store

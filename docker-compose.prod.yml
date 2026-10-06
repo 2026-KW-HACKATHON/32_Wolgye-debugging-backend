@@ -1,0 +1,38 @@
+# 운영(EC2)용. DB 는 RDS 를 쓰므로 db 서비스가 없고, api 는 ECR 이미지를 그대로 실행한다.
+# 직접 부르지 말고 deploy/compose.sh 를 쓴다 (API_IMAGE 를 .image.env 에서 읽는다)
+#   ./deploy/compose.sh ps | logs -f api | run --rm api python -m app.jobs.block_alert
+# 로컬 개발은 docker-compose.yml (db + api --reload) 그대로.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    image: ${API_IMAGE:?API_IMAGE 가 필요합니다}
+    restart: unless-stopped
+    env_file: .env
+    # 외부에는 nginx 만 연다. 호스트의 헬스체크(deploy.sh)용으로 127.0.0.1 에만 붙인다
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging: *logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *logging
