@@ -110,7 +110,7 @@ target 차량의 owner 가 NULL 이면 생성 거부.
 
 | # | 항목 | 상태 |
 |---|---|---|
-| 4-1 | **인증/권한** — 이메일 가입·로그인, 초대코드 합류, 토큰 → 현재 사용자 의존성 | ⚪ 모든 "누가 요청하는가" 검증의 전제 |
+| 4-1 | **인증/권한** — 이메일 가입·로그인, 초대코드 합류, 토큰 → 현재 사용자 의존성 | ✅ #6 에서 구현 |
 | 4-2 | 출차 예정을 배치 건에 묶을지 (현재: 차량에 붙임, 배치를 바꿔도 유지) | ❓ 현행 유지 |
 | 4-3 | 2.5D 좌표 기준 | ❓ 건물 로컬 미터로 가정. `buildings.location` 만 위경도(4326) |
 | 4-4 | 한 칸이 여러 칸을 막는 배치 | ❓ 현재 `front_slot_id` 하나. 필요 시 `slot_blocks` 조인 테이블 |
@@ -120,50 +120,56 @@ target 차량의 owner 가 NULL 이면 생성 거부.
 
 ## 5. 백엔드 로직 체크리스트
 
+> 2026-10-06 (#15) 기준. 명세 45개 엔드포인트가 모두 구현됨. 괄호 안은 이슈 번호.
+
 **공통**
-- [x] `IntegrityError` → 409 변환 (제약 이름별 메시지)
-- [ ] API 테스트 (현재는 health · 매퍼 테스트뿐)
+- [x] `IntegrityError` → 409 변환 (제약 이름별 메시지). 테스트는 `tests/api/test_integrity_errors.py`
+- [x] 에러 응답 `{"error": {code, message, detail}}`, 요청 검증 실패 400 `INVALID_INPUT` (#4)
+- [x] 서비스·API 테스트 (각 이슈의 `tests/services/`, `tests/api/`)
+- [x] 응답 datetime 은 모두 KST `+09:00` (`KstDatetime`, 결정 28)
+- [x] 구 API 삭제 (#15)
 
 **인증 (4-1)**
-- [ ] 회원가입(email, password, nickname) / 로그인 / 초대코드로 `building_id` 설정
-- [ ] 관리자 권한 의존성 (`role = MANAGER` + 건물 일치)
+- [x] 회원가입(email, password, nickname) / 로그인 / 토큰 재발급 / 초대코드로 `building_id` 설정 (#6)
+- [x] 관리자 권한 의존성 (`role = MANAGER` + 건물 일치, `BuildingAdmin`·`ensure_building_admin`) (#4)
 
-**차 배치 + 출차 등록 (n15, 한 번의 저장)**
-- [ ] 한 트랜잭션: 기존 활성 배치 종료(`is_active=false, released_at=now()`) → 새 배치 INSERT → 출차 예정 INSERT
-- [ ] 칸이 활성·같은 건물·비어 있음 확인, 아니면 "사용 불가"(n25) 에러 코드
-- [ ] `is_permanent = true` 면 출차 예정 생략 허용
+**차 배치 + 출차 등록 (n15, 한 번의 저장)** (#8)
+- [x] 한 트랜잭션: 새 배치 INSERT → 출차 예정 INSERT. **이미 주차 중인 차는 409 `VEHICLE_ALREADY_PARKED`** (명세 기준. "기존 활성 배치 종료 후 새 배치"는 하지 않음 ❓ 팀 확인 중, PR #30)
+- [x] 칸이 활성·같은 건물·비어 있음·공유 예약 없음 확인, 아니면 409 `SLOT_UNAVAILABLE`(n25) / `SLOT_OCCUPIED`
+- [x] `is_permanent = true` 면 출차 예정 생략 허용
+- [x] 동시성: 대상 칸과 앞·뒤 칸 `SELECT … FOR UPDATE`
 
-**출차 일정 수정 (n18)**
-- [ ] 배치는 두고 출차 예정만 갱신, 사용자 등록 시 같은 날 AI 추정값 무시
+**출차 일정 수정 (n18)** (#8)
+- [x] 배치는 두고 출차 예정만 갱신. 출차 예정 조회는 사용자 등록 > AI 추정 (`services/departures.py`)
 
-**막힘 판정 · 추천**
-- [ ] 앞 칸(`front_slot_id`) 차의 출차 예정 > 이 칸 차의 출차 예정이면 막힘
-- [ ] 추천 자리 = 빈 칸 중 내 출차 시각 기준으로 막히지도, 막지도 않는 칸 중 **가장 안쪽 한 칸** (같으면 P 번호 순). 없으면 추천 없음. 차 있는 칸은 `OCCUPIED` 태그 (명세 열린 질문 19, 2026-10-03 확정)
-- [ ] 전날 밤 막힘 알림(`BLOCK_ALERT`) 배치 작업
+**막힘 판정 · 추천** (#9)
+- [x] 앞 칸(`front_slot_id`) 차의 출차 예정 > 이 칸 차의 출차 예정이면 막힘 (`services/blocking.py`)
+- [x] 추천 자리 = 막히지도 막지도 않는 빈 칸 중 **가장 안쪽 한 칸** (같으면 P 번호 순). 없으면 추천 없음. 차 있는 칸은 `OCCUPIED` (열린 질문 19)
+- [x] 전날 밤 막힘 알림(`BLOCK_ALERT`) 작업 `python -m app.jobs.block_alert` (외부 cron)
 
-**공유 요청**
-- [ ] 생성: 2-1 검증
-- [ ] 결정: 관리자 건물 일치, `PENDING` 에서만(구현됨), 겹침 시 409(구현됨), 수락 시 토큰 이동(구현됨), 결과 알림(`SHARE_RESULT`) 생성
-- [ ] 요청 도착 알림(`SHARE_REQUEST`) → 관리자
+**공유 요청** (#12, #13)
+- [x] 생성: 2-1 검증 (같은 골목 다른 빌라, 기간·요일·시간·`max_hours`, 토큰 잔액)
+- [x] 결정: 관리자 건물 일치, `PENDING` 에서만, 겹침 시 409, 수락 시 토큰 이동, 결과 알림(`SHARE_RESULT`)
+- [x] 요청 도착 알림(`SHARE_REQUEST`) → 공유를 연 관리인
 
-**공유 조건 (n32 / n34 / n45)**
-- [x] 등록·조회 (`/share-offers`)
-- [ ] 수정·중단(`is_public = false`), 공개 공유 탐색(거리순, `buildings.location`)
+**공유 조건 (n32 / n34 / n45)** (#12, #13)
+- [x] 등록·조회·수정·삭제 (`/admin/buildings/{id}/share-offers`, `/admin/share-offers/{id}`)
+- [x] 공개 공유 탐색 (`GET /garages`, 같은 골목). 거리순 정렬(`buildings.location`)은 하지 않음
 - [x] 요청 시간이 기간·요일·시간·`max_hours` 안인지 검증
 
 **토큰**
 - [x] 이동 서비스 (`app/services/tokens.py`, 잔액 확인과 차감을 한 문장으로)
-- [ ] 가입 시 500,000 토큰 시스템 지급 (이슈 #6). 충전·선물·내역 API 는 만들지 않음 (화면 없음)
+- [x] 가입 시 500,000 토큰 시스템 지급 (#6). 충전·선물·내역 API 는 만들지 않음 (화면 없음)
 
-**이동 요청**
-- [ ] 생성: 2-4 검증, 수신자(`target.owner_id`)에게 `MOVE_REQUEST` 알림
-- [ ] 응답("옮겼어요"/거절): `responded_at` 기록. 요청자용 결과 알림은 Figma 에 없어 만들지 않음 (`MOVE_RESPONSE` 는 0004 에서 제거)
+**이동 요청** (#10)
+- [x] 생성: 2-4 검증, 수신자(`target.owner_id`)에게 `MOVE_REQUEST` 알림
+- [x] 응답("옮겼어요"): `responded_at` 기록. 요청자용 결과 알림은 만들지 않음 (결정 2). 거절(`DECLINED`) API 는 화면이 없어 만들지 않음
 
-**알림**
-- [ ] 내 알림 목록 / 읽음 처리
+**알림** (#11)
+- [x] 내 알림 목록 / 읽음 처리 / 모두 읽음
 
-**관리자 화면 (n41)**
-- [ ] 실시간 현황 = 활성 배치 + 수락된 공유 + 미확인 차량
-- [ ] 혼잡도 = 날짜별 최대 동시 활성 배치 수 (`assigned_at`~`released_at` 구간 겹침) → 칸 삭제 금지 전제
+**관리자 화면 (n41)** (#14)
+- [x] 실시간 현황 = 활성 배치 + 수락된 공유 중 외부·미확인 차량
+- [x] 혼잡도 = 날짜별 최대 동시 활성 배치 수 (`assigned_at`~`released_at` 구간 겹침) → 칸 삭제 금지 전제
 
-**미구현 API 리소스**: `garages`, `residents`, `parking_assignments`, `move_requests`, `notifications`, 토큰 충전·선물·내역
+**만들지 않은 것**: 토큰 충전·선물·내역, 미확인 차량 출차·삭제, 이동 요청 거절, 출차 일정 취소 (화면·명세 없음)
