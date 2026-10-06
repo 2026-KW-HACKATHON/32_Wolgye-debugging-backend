@@ -505,6 +505,9 @@ paths:
     get:
       tags: [vehicles]
       summary: 👤 반복 출차 일정 조회 (#9)
+      description: |
+        **반복 일정이 없으면 404 `NOT_FOUND`** 입니다 (200 + `null` 이 아님). 화면은 404 를 "반복 일정 없음"으로 보여 주면 됩니다.
+        내 차량이 아니거나 없는 차량도 똑같이 404 입니다.
       operationId: getRecurringSchedule
       x-priority: 2주차
       responses:
@@ -514,7 +517,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RecurringSchedule" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          description: 반복 일정이 없음 / 내 차량이 아님
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: NOT_FOUND, message: 반복 출차 일정이 없습니다., detail: null } }
     put:
       tags: [vehicles]
       summary: 👤 반복 출차 일정 설정 (#9)
