@@ -1860,16 +1860,18 @@ components:
         requester: { type: object, properties: { label: { type: string } } }
         my_vehicle:
           type: object
+          description: 이동을 요청받은 차량
           properties:
             plate: { type: string }
-            slot_label: { type: string }
-            parked_at: { type: string, format: date-time }
+            slot_label: { type: [string, "null"], description: 지금 주차 중이 아니면(이미 출차) null }
+            parked_at: { type: [string, "null"], format: date-time, description: 지금 주차 중이 아니면 null }
         blocked_vehicle:
-          type: object
+          type: [object, "null"]
+          description: 막힌 차량 (요청자가 요청할 때 이 빌라에 세워 둔 차). 요청자가 차를 세워 두지 않았거나 관리인이 외부 차량에 보낸 요청이면 null
           properties:
             plate: { type: string }
-            slot_label: { type: string }
-            needed_at: { type: string, format: date-time }
+            slot_label: { type: [string, "null"], description: 지금 주차 중이 아니면 null }
+            needed_at: { type: [string, "null"], format: date-time }
         reason: { type: [string, "null"] }
       example:
         id: 44
