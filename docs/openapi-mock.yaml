@@ -20,7 +20,7 @@ info:
     | 계층 | Building > Zone > Lane > Slot (`depth`) | **골목(Alley) > 빌라(Building) = 차고지 > 주차 구역(Zone) > 칸(Slot)**. 주차 구역은 필로티 안쪽·건물 앞·골목 같은 묶음 (DB 테이블 이름은 `garages`). 막힘은 `front_slot_id` 로 계산 |
     | 사용자–빌라 | 여러 빌라 소속 가능 (`BuildingMember`) | **한 사용자는 한 빌라에만 소속** (`residents.building_id`). 이미 소속된 사용자가 합류하면 409 |
 
-    > ✅ **이 명세의 엔드포인트 45개는 모두 서버에 구현되어 있습니다** (2026-10-05, 로컬 서버 `/openapi.json` 과 경로·파라미터·요청/응답 필드 대조). 서버 Swagger 에 함께 보이는 `/alleys`, `/buildings`(목록·생성·상세), `/departures`, `/parking-slots`, `/share-offers`, `/vehicles`, `GET /share-requests`, `POST /share-requests/{id}/decision` 은 **구 API** 라서 이슈 #15 에서 삭제됩니다. 쓰지 마세요.
+    > ✅ **이 명세의 엔드포인트 45개는 모두 서버에 구현되어 있습니다** (2026-10-05, 로컬 서버 `/openapi.json` 과 경로·파라미터·요청/응답 필드 대조). 예전 구 API(`/alleys`, `/buildings` 목록·생성·상세, `/departures`, `/parking-slots`, `/share-offers`, `/vehicles`, `GET /share-requests`, `POST /share-requests/{id}/decision`)는 이슈 #15 에서 **삭제했습니다**. 서버 Swagger 에도 이제 이 명세의 45개만 보입니다.
 
     ### 공통 규칙
     | 항목 | 규칙 |
