@@ -9,7 +9,7 @@
 3. **API 명세**: `docs/openapi-mock.yaml` (Figma 기준으로 정리한 설계 명세, 엔드포인트 45개). 맨 위 "열린 질문" 표에 미정 항목이 있다
 4. Notion "API 명세 v0.2"는 임시안. 위와 다르면 위를 따른다
 
-- 현재 구현된 `/alleys`, `/share-offers` 등은 **구 API**이고 명세와 경로·응답 모양이 다르다. 새 작업은 명세를 따르고, 구 API는 이슈 #15에서 제거한다.
+- 구 API(`/alleys`, `/share-offers` 등, 명세와 경로·응답 모양이 달랐던 것)는 이슈 #15에서 삭제했다. 모든 작업은 명세를 따른다.
 - 명세에 없거나 애매한 부분은 **추측해서 구현하지 않는다.** 해당 이슈에 댓글로 질문을 남기고 작업 보고에 포함한다.
 
 ## 작업 단위 = GitHub 이슈
@@ -45,7 +45,7 @@ alembic upgrade head && alembic check   # 모델 ↔ 마이그레이션 일치 �
 - DB 세션은 `db: DbSession`(`app/api/deps.py`)으로 받는다. 기본값에 `Depends()`를 쓰면 lint(B008)에 걸린다.
 - 인증·권한은 `app/api/deps.py`의 `CurrentUser`, `BuildingMember`, `BuildingAdmin`(경로에 `{building_id}` 필요)을 쓴다. 경로에 빌라 id가 없으면 서비스에서 `app/services/permissions.py`의 `ensure_building_member/admin`을 부른다. 인증은 `Authorization: Bearer <access_token>`(#6)이고, API 테스트는 `tests/helpers.auth_headers(resident)`로 헤더를 만든다.
 - 공통 도구: 에러 코드 `app/core/error_codes.py`, 페이지네이션 `app/services/pagination.py`(`paginate`) + `app/schemas/common.py`(`Page[T]`) + `deps.py`(`CursorParam`, `LimitParam`), 번호판 `app/core/plates.py`·`PlateIn/PlateOut`, 요일 `app/core/weekdays.py`, 명세↔DB enum `app/core/enum_maps.py`.
-- 구 API 라우터는 `app/api/v1/endpoints/legacy/`에 있다 (#15에서 삭제). 새 엔드포인트는 `endpoints/` 바로 아래 자기 파일에만 추가한다.
+- 새 엔드포인트는 `app/api/v1/endpoints/` 아래 자기 파일에만 추가한다. 구 API(`/alleys`, `/share-offers` 등)는 #15에서 삭제했다.
 - DB 제약 위반(`IntegrityError`)은 전역 핸들러가 409로 바꾼다. 새 제약을 추가하면 `app/core/db_errors.py`에 제약 이름별 에러 코드와 메시지를 등록한다.
 - 새 모델은 `app/models/__init__.py`에 반드시 import 한다. 빠지면 relationship 해석 실패(500)와 Alembic 누락이 생긴다.
 - 테스트: 비즈니스 규칙은 `tests/services/`, API는 `tests/api/`. 데이터는 `tests/factories.py`로 만든다. 명세가 아직 바뀔 수 있으므로 응답 전체를 스냅샷처럼 고정하는 테스트는 피한다.
