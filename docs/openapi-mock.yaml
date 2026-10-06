@@ -33,6 +33,7 @@ info:
     | 페이지네이션 | `?cursor=&limit=20` → `{ "items": [], "next_cursor": null }` |
     | 에러 | `{ "error": { "code", "message", "detail" } }` |
     | 번호판 | 응답은 `12가 3456`(공백 포함). 요청은 공백 유무 모두 허용하고 서버가 정규화 |
+    | 응답 필드 | 응답 스키마에 적힌 필드는 **항상 들어 있습니다**. 값이 없으면 필드를 빼지 않고 `null` 로 줍니다. 예외는 배치 추천(`SlotRecommendation`) 하나로, 태그에 해당하는 `reason`·`will_block`·`unavailable_reason` 만 내려줍니다 |
 
     ### Mock 데이터 시나리오 (기준 시각: 2026-09-30 수요일 14:40 KST)
     | 대상 | 내용 |
@@ -2192,7 +2193,10 @@ components:
         link:
           type: [object, "null"]
           properties:
-            screen: { type: string, description: "이동할 화면 (MOVE_REQUEST, SHARE_REQUEST 등)" }
+            screen:
+              type: string
+              enum: [MOVE_REQUEST, SHARE_REQUEST, HOME]
+              description: "이동할 화면. 알림 종류별로 정해짐 (결정 11): MOVE_REQUEST → MOVE_REQUEST(id = 이동 요청 id) · SHARE_REQUEST·SHARE_RESULT → SHARE_REQUEST(id = 공유 요청 id) · BLOCK_ALERT → HOME(id = null). EXIT_DONE 은 link 자체가 null"
             id: { type: [integer, "null"], description: "대상 id. HOME 처럼 대상이 없는 화면이면 null" }
         is_read: { type: boolean }
         created_at: { type: string, format: date-time }

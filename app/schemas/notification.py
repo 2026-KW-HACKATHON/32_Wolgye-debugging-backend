@@ -11,7 +11,7 @@ NotificationTypeName = Literal["BLOCK_ALERT", "MOVE_REQUEST", "EXIT_DONE", "SHAR
 
 
 class NotificationLink(BaseModel):
-    screen: str
+    screen: Literal["MOVE_REQUEST", "SHARE_REQUEST", "HOME"]  # 명세 NotificationLink.screen (결정 11)
     id: int | None = None
 
 
