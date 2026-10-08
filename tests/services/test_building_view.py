@@ -12,6 +12,7 @@ from app.schemas.admin import OccupantType
 from app.schemas.building_view import SlotState, SlotTag
 from app.schemas.common import KST
 from app.schemas.my_vehicle import ExitSource
+from app.services import admin as admin_service
 from app.services import building_view, home, notifications, recommendations
 from app.services.exceptions import ForbiddenError, InvalidInputError, NotFoundError
 from tests.factories import make_alley, make_building, make_resident, make_share_offer, make_share_request, make_vehicle
@@ -141,6 +142,46 @@ async def test_status_overdue_car_is_soon_exit(db, villa):
     """예정 시각이 지났는데 아직 서 있는 차는 곧 나갈 차로 본다."""
     status = await building_view.get_status(db, villa["me"], villa["building"].id, now=_at(19))
     assert status.slots[0].state == SlotState.SOON_EXIT  # P1 은 18:30 출차 예정이었다
+
+
+async def test_status_reservation_only_for_unparked_share(db, villa):
+    """진행 중인 수락된 공유가 있고 주차 기록이 없는 칸만 reservation. state 는 EMPTY 그대로 (#53)."""
+    visitor_car2 = await make_vehicle(db, "56다1234", owner=villa["visitor"])
+    offer7 = await make_share_offer(db, villa["P7"], villa["manager"])
+    share7 = await make_share_request(db, offer7, villa["visitor"], ShareRequestStatus.ACCEPTED, start_hour=14, end_hour=16)
+    share7.request_date, share7.vehicle_id = TODAY, visitor_car2.id
+    offer8 = await make_share_offer(db, villa["P8"], villa["manager"])
+    share8 = await make_share_request(db, offer8, villa["visitor"], ShareRequestStatus.ACCEPTED, start_hour=18, end_hour=20)
+    share8.request_date = TODAY  # 아직 시작 전 → 예약으로 안 보인다
+    await db.commit()
+
+    status = await building_view.get_status(db, villa["me"], villa["building"].id, now=NOW)
+    by_label = dict(zip([f"P{i}" for i in range(1, 9)], status.slots, strict=True))
+
+    p7 = by_label["P7"]
+    assert (p7.state, p7.parking) == (SlotState.EMPTY, None)
+    assert (p7.reservation.plate, p7.reservation.occupant_type) == ("56다 1234", OccupantType.EXTERNAL)
+    assert (p7.reservation.start_hour, p7.reservation.end_hour) == (14, 16)
+    assert by_label["P3"].reservation is None  # 공유 이용자가 실제로 주차 중 → parking 으로 보인다
+    assert by_label["P3"].parking.occupant_type == OccupantType.EXTERNAL
+    assert by_label["P8"].reservation is None
+    assert by_label["P1"].reservation is None  # 공유 없음
+
+    # 관리자 실시간도 같은 기준: P3 은 주차 중인 공유 이용자(share 있음), P6 은 미확인, P7 은 예약만
+    dash = await admin_service.get_dashboard(db, villa["building"].id, now=NOW)
+    realtime = {v.slot_label: v for v in dash.realtime.vehicles}
+    assert list(realtime) == ["P3", "P6", "P7"]
+    assert (realtime["P3"].parked, realtime["P3"].share.start_hour, realtime["P3"].share.end_hour) == (True, 13, 17)
+    assert realtime["P3"].can_request_move is True
+    assert (realtime["P6"].parked, realtime["P6"].share) == (True, None)
+    assert (realtime["P7"].parked, realtime["P7"].plate, realtime["P7"].can_request_move) == (False, "56다 1234", False)
+    assert dash.realtime.available_count == 1  # P8 (P7 은 예약, P5 는 사용 중지)
+
+    share7.vehicle_id = None  # 차량을 고르지 않은 공유도 예약으로 보인다
+    await db.commit()
+    status = await building_view.get_status(db, villa["me"], villa["building"].id, now=NOW)
+    p7 = status.slots[6]
+    assert (p7.reservation.plate, p7.reservation.occupant_type) == (None, OccupantType.EXTERNAL)
 
 
 # ── 배치 추천 ──

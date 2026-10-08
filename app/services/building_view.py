@@ -23,12 +23,14 @@ from app.schemas.building_view import (
     LayoutZone,
     SlotParking,
     SlotRect,
+    SlotReservation,
     SlotState,
     SlotStatus,
 )
 from app.schemas.common import KST
 from app.schemas.user import AlleyRef
-from app.services import blocking
+from app.services import blocking, share_requests
+from app.services.admin import occupant_type
 from app.services.blocking import Occupant, SlotBlock
 from app.services.exceptions import NotFoundError
 from app.services.slot_labels import building_slot_labels
@@ -157,6 +159,19 @@ async def get_status(
             exit_source=occupant.exit_source,
         )
 
+    shares = await share_requests.active_shares_at(db, snap.labels.keys(), now)
+
+    def reservation(slot_id: int) -> SlotReservation | None:
+        active = shares.get(slot_id)
+        if active is None or slot_id in snap.occupants:  # 실제로 주차했으면 parking 으로 보인다
+            return None
+        return SlotReservation(
+            plate=active.vehicle.plate_no if active.vehicle else None,
+            occupant_type=occupant_type(active.requester, building_id),
+            start_hour=active.share.start_hour,
+            end_hour=active.share.end_hour,
+        )
+
     return BuildingStatus(
         updated_at=now,
         slots=[
@@ -164,6 +179,7 @@ async def get_status(
                 slot_id=slot.id,
                 state=snap.state(slot, now),
                 parking=parking(slot.id),
+                reservation=reservation(slot.id),
                 blocked_by=snap.blocks[slot.id].blocked_by,
                 blocking=snap.blocks[slot.id].blocking,
             )
