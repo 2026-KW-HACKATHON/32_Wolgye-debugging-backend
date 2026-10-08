@@ -70,10 +70,20 @@ class SlotParking(BaseModel):
     exit_source: ExitSource
 
 
+class SlotReservation(BaseModel):
+    """지금 이용 시간인 수락된 공유가 있지만 아직 주차하지 않은 칸의 예약 (#53)."""
+
+    plate: PlateOut | None  # 요청자가 차량을 고르지 않았으면 null
+    occupant_type: OccupantType  # 공유 요청자 기준 (보통 EXTERNAL)
+    start_hour: int
+    end_hour: int  # 24 = 다음 날 0시
+
+
 class SlotStatus(BaseModel):
     slot_id: int
-    state: SlotState
+    state: SlotState  # 예약만 있는 칸도 EMPTY (reservation 으로 구분)
     parking: SlotParking | None
+    reservation: SlotReservation | None  # 진행 중인 수락된 공유가 있고 주차 기록이 없을 때만
     blocked_by: list[int]  # 이 칸의 차를 막고 있는 칸
     blocking: list[int]  # 이 칸의 차가 막고 있는 칸
 
