@@ -14,7 +14,7 @@ from app.schemas.common import KST
 from app.schemas.my_vehicle import ExitSource
 from app.services import building_view, home, notifications, recommendations
 from app.services.exceptions import ForbiddenError, InvalidInputError, NotFoundError
-from tests.factories import make_resident, make_share_offer, make_share_request, make_vehicle
+from tests.factories import make_alley, make_building, make_resident, make_share_offer, make_share_request, make_vehicle
 from tests.factories_parking import make_assignment, make_departure, make_spec_building
 
 pytestmark = pytest.mark.anyio
@@ -263,6 +263,7 @@ async def test_home_matches_spec_example(db, villa):
         _at(18, 30),
     )
     assert (result.my_parking.vehicle.id, result.my_parking.vehicle.plate) == (villa["my_car"].id, "12가 3456")
+    assert (result.my_parking.building.name, result.my_parking.is_shared) == ("월계 한빛빌라", False)
     assert (result.block_alert.blocking_parking_id, result.block_alert.message) == (
         villa["neighbor_parking"].id,
         "내 차량이 P2 차량에 의해 막혀 있습니다.",
@@ -284,6 +285,20 @@ async def test_home_without_parking_and_for_manager(db, villa):
     assert (manager.my_parking, manager.block_alert) == (None, None)
     assert (manager.building.role, manager.admin.pending_share_requests) == ("ADMIN", 1)
     assert manager.recent_notifications == [] and manager.unread_notification_count == 0
+
+
+async def test_home_shows_shared_parking_building(db, villa):
+    """공유 주차장(다른 빌라)에 세운 차는 그 빌라 이름과 is_shared=true 로 보여준다 (backend #51)."""
+    other = await make_building(db, "INV002", "햇살빌라", alley=await make_alley(db, "다른 골목"))
+    villa["visitor"].building_id = other.id
+    await db.commit()
+
+    result = await home.get_home(db, villa["visitor"], now=NOW)
+
+    assert result.building.name == "햇살빌라"
+    assert result.my_parking.slot_label == "P3"
+    assert (result.my_parking.building.id, result.my_parking.building.name) == (villa["building"].id, "월계 한빛빌라")
+    assert result.my_parking.is_shared is True
 
 
 async def test_home_requires_building(db):

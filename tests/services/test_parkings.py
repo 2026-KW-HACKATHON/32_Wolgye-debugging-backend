@@ -189,6 +189,50 @@ async def test_other_building_slot_needs_my_accepted_share(db, lane):
     assert created.slot_id == lane["outer"].id
 
 
+async def test_shared_slot_exit_must_be_within_share(db, lane):
+    """공유 칸은 공유 종료 시각(17:00)까지만 세울 수 있다. 상시 주차·17시 넘는 출차는 400, 일정 수정도 같다 (backend #51)."""
+    other = await make_building(db, "INV002", "옆 빌라", alley=await make_alley(db, "다른 골목"))
+    visitor = await make_resident(db, "visitor@example.com", other)
+    visitor_car = await make_vehicle(db, "56다1234", owner=visitor)
+    host = await make_resident(db, "host@example.com", lane["building"])
+    offer = await make_share_offer(db, lane["outer"], host)
+    share = await make_share_request(db, offer, visitor, ShareRequestStatus.ACCEPTED, start_hour=13, end_hour=17)
+    share.request_date = TODAY
+    await db.commit()
+
+    with pytest.raises(InvalidInputError) as late:
+        await parkings.create_parking(db, visitor, _create(lane["outer"], visitor_car), now=NOW)  # 18:30
+    assert late.value.detail == {
+        "field": "expected_exit_at",
+        "reason": "공유 이용 시간(17:00)까지 출차해야 합니다.",
+        "share_ends_at": _at(17).isoformat(),
+    }
+    long_term = ParkingCreate(slot_id=lane["outer"].id, vehicle_id=visitor_car.id, is_long_term=True)
+    with pytest.raises(InvalidInputError):
+        await parkings.create_parking(db, visitor, long_term, now=NOW)
+
+    created = await parkings.create_parking(
+        db, visitor, _create(lane["outer"], visitor_car, expected_exit_at=_at(16, 30)), now=NOW
+    )
+    with pytest.raises(InvalidInputError) as extended:
+        await parkings.update_schedule(
+            db, visitor, created.id, ParkingScheduleUpdate(expected_exit_at=_at(17, 30)), now=NOW
+        )
+    assert extended.value.detail["share_ends_at"] == _at(17).isoformat()
+    updated = await parkings.update_schedule(
+        db, visitor, created.id, ParkingScheduleUpdate(expected_exit_at=_at(17)), now=NOW
+    )
+    assert updated.expected_exit_at == _at(17)
+
+    with pytest.raises(InvalidInputError) as ended:  # 공유가 끝난 뒤에는 출차 예정을 바꿀 수 없다 (출차는 된다)
+        await parkings.update_schedule(
+            db, visitor, created.id, ParkingScheduleUpdate(expected_exit_at=_at(18)), now=_at(17, 10)
+        )
+    assert ended.value.detail["reason"] == "공유 이용 시간이 끝났습니다."
+    exited = await parkings.exit_parking(db, visitor, created.id, now=_at(17, 10))
+    assert exited.state == ParkingState.EXITED
+
+
 async def test_slot_reserved_later_before_my_exit_is_unavailable(db, lane):
     """지금은 비어 있어도 내 출차 시각 전에 수락된 공유가 시작되면 예약된 칸. 출차가 그보다 이르면 세울 수 있다."""
     visitor = await make_resident(db, "visitor@example.com")

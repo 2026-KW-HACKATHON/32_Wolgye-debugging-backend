@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.building import Building
 from app.models.garage import Garage
 from app.models.parking_slot import ParkingSlot
 from app.services.exceptions import NotFoundError
@@ -54,6 +55,19 @@ async def slot_labels(db: AsyncSession, slot_ids: Iterable[int]) -> dict[int, st
     )
     rows = await db.execute(select(numbered.c.slot_id, numbered.c.ordinal).where(numbered.c.slot_id.in_(ids)))
     return {slot_id: format_label(ordinal) for slot_id, ordinal in rows.all()}
+
+
+async def slot_building(db: AsyncSession, slot_id: int) -> Building:
+    """칸이 있는 빌라. 없는 칸이면 404 NOT_FOUND."""
+    building = await db.scalar(
+        select(Building)
+        .join(Garage, Garage.building_id == Building.id)
+        .join(ParkingSlot, ParkingSlot.garage_id == Garage.id)
+        .where(ParkingSlot.id == slot_id)
+    )
+    if building is None:
+        raise NotFoundError("칸을 찾을 수 없습니다.")
+    return building
 
 
 async def slot_label(db: AsyncSession, slot_id: int) -> str:

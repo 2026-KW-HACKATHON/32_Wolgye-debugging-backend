@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from app.core.enum_maps import BuildingRole
 from app.schemas.admin import OccupantType
 from app.schemas.common import KstDatetime, PlateOut
-from app.schemas.my_vehicle import ExitSource, ParkingState
+from app.schemas.my_vehicle import ExitSource, ParkedBuilding, ParkingState
 from app.schemas.notification import NotificationItem
 from app.schemas.user import AlleyRef
 
@@ -132,6 +132,8 @@ class HomeParking(BaseModel):
     slot_label: str
     state: ParkingState
     expected_exit_at: KstDatetime | None
+    building: ParkedBuilding  # 차가 서 있는 빌라 (backend #51)
+    is_shared: bool  # 내 빌라가 아닌 공유 주차장 칸이면 true
 
 
 class HomeBlockAlert(BaseModel):
