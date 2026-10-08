@@ -17,6 +17,7 @@ from app.models.share_offer import ShareOffer
 from app.models.share_request import ShareRequest
 from app.models.token_transfer import TokenTransfer
 from app.models.vehicle import Vehicle
+from app.models.vehicle_report import VehicleReport
 
 __all__ = [
     "Alley",
@@ -32,4 +33,5 @@ __all__ = [
     "ShareRequest",
     "TokenTransfer",
     "Vehicle",
+    "VehicleReport",
 ]

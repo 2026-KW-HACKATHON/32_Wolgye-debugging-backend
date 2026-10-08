@@ -305,15 +305,27 @@ async def update_slot(db: AsyncSession, user: Resident, slot_id: int, payload: A
 async def register_unknown_vehicle(
     db: AsyncSession, building_id: int, payload: UnknownVehicleCreate
 ) -> UnknownVehicleCreated:
-    """번호판만으로 주인 없는 차(owner_id NULL)를 만들고 칸에 배치한다.
+    """번호판만으로 주인 없는 차(owner_id NULL)를 만들고 칸에 배치한다. 규칙은 place_unknown_vehicle."""
+    assignment = await place_unknown_vehicle(db, building_id, payload.slot_id, payload.plate)
+    await db.commit()
+    return UnknownVehicleCreated(
+        parking_id=assignment.id, vehicle_id=assignment.vehicle_id, occupant_type=OccupantType.UNKNOWN
+    )
+
+
+async def place_unknown_vehicle(db: AsyncSession, building_id: int, slot_id: int, plate: str) -> ParkingAssignment:
+    """주인 없는 차(owner_id NULL)를 칸에 배치하고 flush 한다. **commit 하지 않는다** (관리인 등록·미등록 차량 제보 #52 공용).
 
     - 칸이 이 빌라에 없으면 404, 비활성 칸이면 409 SLOT_UNAVAILABLE, 이미 차가 있으면 409 SLOT_OCCUPIED
     - 같은 번호판의 미확인 차량이 이미 있으면 그 차를 다시 쓴다 (주인 있는 차면 409 PLATE_EXISTS)
+    - 그 미확인 차량이 다른 칸에 주차 중이면 409 VEHICLE_ALREADY_PARKED
+    plate 는 공백 없는 값 (PlateIn·normalize_plate).
     """
     slot = await db.scalar(
         select(ParkingSlot)
         .join(Garage, Garage.id == ParkingSlot.garage_id)
-        .where(ParkingSlot.id == payload.slot_id, Garage.building_id == building_id)
+        .where(ParkingSlot.id == slot_id, Garage.building_id == building_id)
+        .with_for_update(of=ParkingSlot)
     )
     if slot is None:
         raise NotFoundError("칸을 찾을 수 없습니다.")
@@ -325,16 +337,24 @@ async def register_unknown_vehicle(
     if occupied is not None:
         raise ConflictError("이미 다른 차량이 주차 중인 칸입니다.", code=ErrorCode.SLOT_OCCUPIED)
 
-    vehicle = await db.scalar(select(Vehicle).where(Vehicle.plate_no == payload.plate))
+    vehicle = await db.scalar(select(Vehicle).where(Vehicle.plate_no == plate))
     if vehicle is None:
-        vehicle = Vehicle(plate_no=payload.plate, owner_id=None)
+        vehicle = Vehicle(plate_no=plate, owner_id=None)
         db.add(vehicle)
         await db.flush()
     elif vehicle.owner_id is not None:
         raise ConflictError("이미 등록된 차량 번호입니다.", code=ErrorCode.PLATE_EXISTS)
+    else:
+        parked = await db.scalar(
+            select(ParkingAssignment.id).where(ParkingAssignment.vehicle_id == vehicle.id, ParkingAssignment.is_active)
+        )
+        if parked is not None:
+            raise ConflictError(
+                "이미 다른 칸에 주차 중인 차량입니다.", code=ErrorCode.VEHICLE_ALREADY_PARKED, detail={"parking_id": parked}
+            )
 
-    # 이미 다른 칸에 주차 중이면 uq_active_assignment_vehicle → 409 VEHICLE_ALREADY_PARKED (전역 핸들러)
+    # 동시에 같은 차를 배치하면 uq_active_assignment_vehicle → 409 VEHICLE_ALREADY_PARKED (전역 핸들러)
     assignment = ParkingAssignment(slot_id=slot.id, vehicle_id=vehicle.id)
     db.add(assignment)
-    await db.commit()
-    return UnknownVehicleCreated(parking_id=assignment.id, vehicle_id=vehicle.id, occupant_type=OccupantType.UNKNOWN)
+    await db.flush()
+    return assignment

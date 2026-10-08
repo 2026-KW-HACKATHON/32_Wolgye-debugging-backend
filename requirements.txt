@@ -11,3 +11,5 @@ python-dotenv>=1.0
 PyJWT>=2.9
 pwdlib[argon2]>=0.2
 email-validator>=2.2
+python-multipart>=0.0.12  # multipart/form-data (미등록 차량 제보 사진, #52)
+Pillow>=11  # 제보 사진 검사·EXIF 제거·축소 (#52)
