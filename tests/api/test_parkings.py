@@ -177,6 +177,28 @@ async def test_update_schedule(client, setup):
     assert (await client.get(url, headers=auth_headers(setup["me"]))).json()["schedule"]["memo"] is None
 
 
+async def test_update_schedule_to_long_term(client, setup):
+    """상시 주차로 바꾸면 응답·차량 상세·홈·배치도 현황 모두 출차 시각이 null 이다 (backend #48)."""
+    parking = (await _park(client, setup["me"], setup["inner"], setup["my_car"], repeat_weekdays=True)).json()
+
+    res = await client.put(
+        f"{BASE}/{parking['id']}/schedule",
+        json={"is_long_term": True, "memo": "주말 동안 세워 둠"},
+        headers=auth_headers(setup["me"]),
+    )
+    assert res.status_code == 200, res.text
+    assert res.json() == {"parking_id": parking["id"], "expected_exit_at": None, "exit_source": "NONE", "memo": None}
+
+    headers = auth_headers(setup["me"])
+    schedule = (await client.get(f"/api/v1/me/vehicles/{setup['my_car'].id}", headers=headers)).json()["schedule"]
+    assert (schedule["expected_exit_at"], schedule["exit_source"], schedule["memo"]) == (None, "NONE", None)
+    my_parking = (await client.get("/api/v1/me/home", headers=headers)).json()["my_parking"]
+    assert (my_parking["parking_id"], my_parking["expected_exit_at"]) == (parking["id"], None)
+    status = (await client.get(f"/api/v1/buildings/{setup['me'].building_id}/status", headers=headers)).json()
+    slot = next(s for s in status["slots"] if s["slot_id"] == setup["inner"].id)
+    assert (slot["parking"]["id"], slot["parking"]["expected_exit_at"]) == (parking["id"], None)
+
+
 async def test_update_schedule_earlier_sends_block_alert(client, setup):
     mine = (await _park(client, setup["me"], setup["inner"], setup["my_car"], expected_exit_at=_later(6))).json()
     await _park(client, setup["neighbor"], setup["outer"], setup["neighbor_car"], expected_exit_at=_later(4))
@@ -203,6 +225,12 @@ async def test_update_schedule_errors(client, setup):
     past = await client.put(url, json={"expected_exit_at": _later(-1)}, headers=auth_headers(setup["me"]))
     assert past.status_code == 400
     assert_error(past, ErrorCode.INVALID_INPUT)
+
+    memo_only = await client.put(  # 상시 주차가 아닌데 출차 시간이 없음
+        url, json={"is_long_term": False, "memo": "메모"}, headers=auth_headers(setup["me"])
+    )
+    assert memo_only.status_code == 400
+    assert_error(memo_only, ErrorCode.INVALID_INPUT)
 
     # 남의 주차 건·없는 주차 건은 구분 없이 404
     for target, user in ((url, setup["neighbor"]), (f"{BASE}/99999/schedule", setup["me"])):
