@@ -224,6 +224,15 @@ async def test_shared_slot_exit_must_be_within_share(db, lane):
     )
     assert updated.expected_exit_at == _at(17)
 
+    with pytest.raises(InvalidInputError) as to_long_term:  # 공유 칸은 상시 주차로 바꿀 수 없다 (backend #48)
+        await parkings.update_schedule(db, visitor, created.id, ParkingScheduleUpdate(is_long_term=True), now=NOW)
+    assert to_long_term.value.detail == {
+        "field": "expected_exit_at",
+        "reason": "공유 이용 시간(17:00)까지 출차해야 합니다.",
+        "share_ends_at": _at(17).isoformat(),
+    }
+    assert (await db.get(ParkingAssignment, created.id)).is_permanent is False
+
     with pytest.raises(InvalidInputError) as ended:  # 공유가 끝난 뒤에는 출차 예정을 바꿀 수 없다 (출차는 된다)
         await parkings.update_schedule(
             db, visitor, created.id, ParkingScheduleUpdate(expected_exit_at=_at(18)), now=_at(17, 10)
@@ -306,6 +315,53 @@ async def test_update_schedule_makes_long_term_timed(db, lane):
     assert assignment.is_permanent is False
 
 
+async def test_update_schedule_to_long_term(db, lane):
+    """상시 주차로 바꾸면 직접 입력한 오늘 이후 일회성 일정을 지우고 반복 일정·AI 추정은 남긴다 (backend #48).
+
+    출차 시각이 없어지므로 과거 시각을 같이 보내도 무시하고, 앞 칸 차에 막혀 있어도 막힘 알림을 보내지 않는다.
+    """
+    payload = _create(lane["inner"], lane["my_car"], expected_exit_at=_at(7, 30, day=1, month=10), repeat_weekdays=True)
+    created = await parkings.create_parking(db, lane["me"], payload, now=NOW)
+    await make_departure(db, lane["my_car"], date(2026, 10, 3), time(9, 0))  # 다른 날 직접 입력한 일정
+    await make_departure(db, lane["my_car"], date(2026, 10, 2), time(8, 0), is_ai_estimated=True)
+    await make_departure(db, lane["my_car"], date(2026, 9, 29), time(8, 0))  # 지난 일정은 건드리지 않는다
+    await parkings.create_parking(
+        db, lane["neighbor"], _create(lane["outer"], lane["neighbor_car"], expected_exit_at=_at(21)), now=NOW
+    )
+
+    updated = await parkings.update_schedule(
+        db,
+        lane["me"],
+        created.id,
+        ParkingScheduleUpdate(is_long_term=True, expected_exit_at=_at(9), memo="주말 동안 세워 둠"),
+        now=NOW,
+    )
+
+    assert (updated.parking_id, updated.expected_exit_at, updated.exit_source, updated.memo) == (
+        created.id,
+        None,
+        ExitSource.NONE,
+        None,
+    )
+    assignment = await db.scalar(
+        select(ParkingAssignment).where(ParkingAssignment.id == created.id).execution_options(populate_existing=True)
+    )
+    assert (assignment.is_active, assignment.is_permanent) == (True, True)
+    rows = await _departures(db, lane["my_car"])
+    assert sorted((r.scheduled_date, tuple(r.repeat_weekdays), r.is_ai_estimated) for r in rows) == [
+        (date(2026, 9, 29), (), False),
+        (TODAY, (0, 1, 2, 3, 4), False),
+        (date(2026, 10, 2), (), True),
+    ]
+    assert await _notifications(db) == []
+
+    # 다시 출차 시각을 넣으면 상시 주차가 풀린다
+    timed = await parkings.update_schedule(
+        db, lane["me"], created.id, ParkingScheduleUpdate(expected_exit_at=_at(20)), now=NOW
+    )
+    assert (timed.expected_exit_at, timed.exit_source) == (_at(20), ExitSource.MANUAL)
+
+
 async def test_update_schedule_earlier_notifies_blocker(db, lane):
     """출차 시간을 앞당겨 앞 칸 차에 막히게 되면 앞 칸 차 주인에게 BLOCK_ALERT. 늦추면 보내지 않는다."""
     mine = await parkings.create_parking(
@@ -342,6 +398,8 @@ async def test_update_schedule_errors(db, lane):
         await parkings.update_schedule(
             db, lane["me"], created.id, ParkingScheduleUpdate(expected_exit_at=_at(9)), now=NOW
         )
+    with pytest.raises(ValueError):  # 상시 주차가 아니면 출차 시각이 필요하다 (API 에서는 400 INVALID_INPUT)
+        ParkingScheduleUpdate(memo="메모만")
 
     await parkings.exit_parking(db, lane["me"], created.id, now=NOW)
     with pytest.raises(NotFoundError):  # 이미 출차

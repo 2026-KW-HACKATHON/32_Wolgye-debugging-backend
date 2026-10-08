@@ -674,6 +674,13 @@ paths:
       description: |
         배치는 그대로 두고 시간만 바꿉니다. **시간이 앞당겨지고 이 차를 막는 차가 있으면 즉시 알림**(제안 13-2)을 보냅니다.
         공유 주차장(다른 빌라 칸)이면 공유 종료 시각을 넘길 수 없습니다 → 400 `INVALID_INPUT` + `detail.share_ends_at`. 공유가 이미 끝났으면 `detail.reason` = `공유 이용 시간이 끝났습니다.` (출차는 됩니다, backend #51)
+
+        **상시 주차로 전환** (backend #48): `is_long_term=true` 면 `expected_exit_at` 은 무시하고 상시 주차로 바꿉니다. `POST /parkings` 와 같은 규칙입니다.
+        - `is_long_term=false`(기본값) 인데 `expected_exit_at` 이 없으면 400 `INVALID_INPUT`
+        - 직접 입력한 오늘 이후 일회성 출차 일정을 지웁니다. **반복 출차 일정은 그대로 두며**, 상시 주차인 동안에는 홈·배치도·차량 상세에 출차 시각을 표시하지 않습니다
+        - 응답 `expected_exit_at: null`, `exit_source: NONE`, `memo: null` (메모를 둘 일정이 없어 저장하지 않습니다). 막힘 알림은 보내지 않습니다
+        - 공유 주차장(다른 빌라 칸)은 상시 주차로 바꿀 수 없습니다 → 400 `INVALID_INPUT` + `detail.share_ends_at`
+        - 다시 `expected_exit_at` 을 보내면 상시 주차가 풀립니다
       operationId: updateParkingSchedule
       x-priority: 1주차
       parameters:
@@ -684,11 +691,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [expected_exit_at]
               properties:
-                expected_exit_at: { type: string, format: date-time }
+                is_long_term: { type: boolean, default: false, description: "상시 주차로 전환. true 면 expected_exit_at 무시" }
+                expected_exit_at: { type: [string, "null"], format: date-time, description: "is_long_term=false 면 필수" }
                 memo: { type: [string, "null"] }
-            example: { expected_exit_at: "2026-09-30T19:00:00+09:00", memo: 늦게 출근 }
+            examples:
+              normal:
+                summary: 출차 시각 변경
+                value: { expected_exit_at: "2026-09-30T19:00:00+09:00", memo: 늦게 출근 }
+              longTerm:
+                summary: 상시 주차로 전환
+                value: { is_long_term: true }
       responses:
         "200":
           description: 수정됨
@@ -698,10 +711,15 @@ paths:
                 type: object
                 properties:
                   parking_id: { type: integer }
-                  expected_exit_at: { type: string, format: date-time }
+                  expected_exit_at: { type: [string, "null"], format: date-time, description: "상시 주차면 null" }
                   exit_source: { $ref: "#/components/schemas/ExitSource" }
                   memo: { type: [string, "null"] }
-              example: { parking_id: 556, expected_exit_at: "2026-09-30T19:00:00+09:00", exit_source: MANUAL, memo: 늦게 출근 }
+              examples:
+                normal:
+                  value: { parking_id: 556, expected_exit_at: "2026-09-30T19:00:00+09:00", exit_source: MANUAL, memo: 늦게 출근 }
+                longTerm:
+                  summary: 상시 주차로 전환됨
+                  value: { parking_id: 556, expected_exit_at: null, exit_source: NONE, memo: null }
         "400": { $ref: "#/components/responses/InvalidInput" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }

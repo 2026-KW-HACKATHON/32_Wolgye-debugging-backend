@@ -191,16 +191,28 @@ async def _notify_blockers(db: AsyncSession, assignment: ParkingAssignment, exit
 async def update_schedule(
     db: AsyncSession, user: Resident, parking_id: int, payload: ParkingScheduleUpdate, now: datetime | None = None
 ) -> ParkingSchedule:
-    """배치는 그대로 두고 출차 예정만 바꾼다. 상시 주차였다면 시간이 생기므로 상시 주차를 푼다.
+    """배치는 그대로 두고 출차 예정만 바꾼다.
 
-    출차 시간을 앞당겼고(없던 시간이 생긴 경우 포함) 이 차를 막는 차가 있으면 막는 차 주인에게 즉시 BLOCK_ALERT.
-    공유 칸(다른 빌라 칸)이면 공유 종료 시각을 넘길 수 없다 (400 INVALID_INPUT, backend #51).
+    - 출차 시각을 주면 그 시각으로 바꾼다. 상시 주차였다면 시간이 생기므로 상시 주차를 푼다.
+      출차 시간을 앞당겼고(없던 시간이 생긴 경우 포함) 이 차를 막는 차가 있으면 막는 차 주인에게 즉시 BLOCK_ALERT.
+    - is_long_term=true 면 상시 주차로 바꾼다 (backend #48). 직접 입력한 오늘 이후 일회성 일정은 지우고
+      반복 일정은 그대로 둔다 (상시 주차인 동안에는 보지 않는다). 출차 시각이 없으므로 exit_source 는 NONE,
+      메모를 둘 일정 행이 없으므로 memo 는 null 이다.
+    공유 칸(다른 빌라 칸)이면 공유 종료 시각을 넘길 수 없고 상시 주차로 바꿀 수 없다 (400 INVALID_INPUT, backend #51).
     """
     now = now or datetime.now(KST)
-    _ensure_future(payload.expected_exit_at, now)
+    exit_at = None if payload.is_long_term else payload.expected_exit_at
+    if exit_at is not None:
+        _ensure_future(exit_at, now)
     assignment = await _my_active_parking(db, user, parking_id)
     if await _slot_building_id(db, assignment.slot_id) != user.building_id:
-        _ensure_within_share(payload.expected_exit_at, await _my_share_end(db, user, assignment.slot_id, now))
+        _ensure_within_share(exit_at, await _my_share_end(db, user, assignment.slot_id, now))
+
+    if exit_at is None:
+        assignment.is_permanent = True
+        await departures.delete_upcoming_one_offs(db, assignment.vehicle_id, now)
+        await db.commit()
+        return ParkingSchedule(parking_id=assignment.id, expected_exit_at=None, exit_source=ExitSource.NONE, memo=None)
 
     previous = None
     if not assignment.is_permanent:
@@ -208,15 +220,15 @@ async def update_schedule(
         previous = departure.at if departure else None
 
     assignment.is_permanent = False
-    await departures.set_one_off(db, assignment.vehicle_id, payload.expected_exit_at, payload.memo, now)
+    await departures.set_one_off(db, assignment.vehicle_id, exit_at, payload.memo, now)
     await db.flush()
-    if previous is None or payload.expected_exit_at < previous:
-        await _notify_blockers(db, assignment, payload.expected_exit_at, now)
+    if previous is None or exit_at < previous:
+        await _notify_blockers(db, assignment, exit_at, now)
     await db.commit()
 
     return ParkingSchedule(
         parking_id=assignment.id,
-        expected_exit_at=payload.expected_exit_at,
+        expected_exit_at=exit_at,
         exit_source=ExitSource.MANUAL,
         memo=payload.memo,
     )

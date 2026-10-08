@@ -182,14 +182,8 @@ async def delete_recurring(db: AsyncSession, user: Resident, vehicle_id: int) ->
 
 
 # ── 주차 건의 출차 예정 (#8) ───────────────────────────────────────────
-async def set_one_off(
-    db: AsyncSession, vehicle_id: int, exit_at: datetime, memo: str | None, now: datetime
-) -> DepartureSchedule:
-    """지금 주차 건의 출차 예정을 exit_at 으로 맞춘다. commit 하지 않는다.
-
-    이 차량이 직접 입력한 오늘(KST) 이후의 일회성 일정은 이전 주차 건이나 수정 전 값이므로 지우고 새로 넣는다
-    (날짜가 바뀌어도 예전 값이 남아 우선하지 않도록). 반복 일정과 AI 추정 행은 그대로 둔다.
-    """
+async def delete_upcoming_one_offs(db: AsyncSession, vehicle_id: int, now: datetime) -> None:
+    """이 차량이 직접 입력한 오늘(KST) 이후의 일회성 일정을 지운다. 반복 일정과 AI 추정 행은 그대로 둔다. commit 하지 않는다."""
     today = now.astimezone(KST).date()
     await db.execute(
         delete(DepartureSchedule).where(
@@ -199,6 +193,17 @@ async def set_one_off(
             DepartureSchedule.is_ai_estimated.is_(False),
         )
     )
+
+
+async def set_one_off(
+    db: AsyncSession, vehicle_id: int, exit_at: datetime, memo: str | None, now: datetime
+) -> DepartureSchedule:
+    """지금 주차 건의 출차 예정을 exit_at 으로 맞춘다. commit 하지 않는다.
+
+    이 차량이 직접 입력한 오늘(KST) 이후의 일회성 일정은 이전 주차 건이나 수정 전 값이므로 지우고 새로 넣는다
+    (날짜가 바뀌어도 예전 값이 남아 우선하지 않도록). 반복 일정과 AI 추정 행은 그대로 둔다.
+    """
+    await delete_upcoming_one_offs(db, vehicle_id, now)
     local = exit_at.astimezone(KST)
     row = DepartureSchedule(
         vehicle_id=vehicle_id, scheduled_date=local.date(), scheduled_time=local.time().replace(tzinfo=None), memo=memo

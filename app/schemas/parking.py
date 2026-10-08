@@ -22,19 +22,24 @@ def _assume_kst(value: datetime) -> datetime:
 ExitAt = Annotated[datetime, AfterValidator(_assume_kst)]
 
 
-class ParkingCreate(BaseModel):
-    slot_id: int
-    vehicle_id: int
+class _ExitTimeOrLongTerm(BaseModel):
+    """상시 주차가 아니면 출차 예정 시각이 필요하다. 상시 주차면 expected_exit_at 은 무시한다."""
+
     is_long_term: bool = False  # 상시 주차
     expected_exit_at: ExitAt | None = None
-    repeat_weekdays: bool = False  # 평일(월~금) 같은 시각으로 반복 일정도 함께 만든다 (이름은 복수형이지만 boolean)
-    memo: str | None = None
 
     @model_validator(mode="after")
-    def _require_exit_time(self) -> "ParkingCreate":
+    def _require_exit_time(self):
         if not self.is_long_term and self.expected_exit_at is None:
             raise ValueError("상시 주차가 아니면 expected_exit_at 이 필요합니다.")
         return self
+
+
+class ParkingCreate(_ExitTimeOrLongTerm):
+    slot_id: int
+    vehicle_id: int
+    repeat_weekdays: bool = False  # 평일(월~금) 같은 시각으로 반복 일정도 함께 만든다 (이름은 복수형이지만 boolean)
+    memo: str | None = None
 
 
 class ParkingCreated(BaseModel):
@@ -46,14 +51,15 @@ class ParkingCreated(BaseModel):
     blocking: list[int]  # 이 배치로 막게 되는 칸
 
 
-class ParkingScheduleUpdate(BaseModel):
-    expected_exit_at: ExitAt
+class ParkingScheduleUpdate(_ExitTimeOrLongTerm):
+    """출차 일정 수정. is_long_term=true 면 상시 주차로 바꾼다 (backend #48)."""
+
     memo: str | None = None
 
 
 class ParkingSchedule(BaseModel):
     parking_id: int
-    expected_exit_at: KstDatetime
+    expected_exit_at: KstDatetime | None  # 상시 주차면 null
     exit_source: ExitSource
     memo: str | None
 
