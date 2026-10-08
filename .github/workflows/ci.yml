@@ -1,10 +1,11 @@
 name: CI
 
+# dev = 개발 통합 브랜치, main = 배포 전용 (dev → main PR 로만 올린다)
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
