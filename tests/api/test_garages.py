@@ -78,6 +78,7 @@ async def test_detail(client, db, sc):
     assert res.status_code == 200
     body = res.json()
     assert body["id"] == sc.next_door.id and body["name"] == "햇살빌라" and body["address"]
+    assert body["site_key"] is None
     assert body["alley"] == {"id": sc.alley.id, "name": sc.alley.name}
     assert body["summary"] == {"start_hour": 0, "end_hour": 24, "min_hourly_price": 0, "max_hours": 6}
     assert [(s["slot_id"], s["label"]) for s in body["slots"]] == [(sc.p1.id, "P1"), (sc.p2.id, "P2"), (sc.p3.id, "P3")]

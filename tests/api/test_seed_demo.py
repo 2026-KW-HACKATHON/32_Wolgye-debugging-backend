@@ -52,8 +52,16 @@ async def test_hanbit_layout_and_status(db: AsyncSession, client: AsyncClient):
     headers = await _login(client, "jisu@chagok.dev")
 
     layout = (await client.get(f"/api/v1/buildings/{result.hanbit_id}/layout", headers=headers)).json()
+    assert layout["site_key"] == "hanbit"
     slots = {s["label"]: s for zone in layout["zones"] for s in zone["slots"]}
     assert list(slots) == [f"P{i}" for i in range(1, 9)]
+    # 칸 좌표는 FE 사이트 파일 hanbit.json 과 같은 배치 (px ÷ 50)
+    assert slots["P1"]["rect"] == {"x0": 9.1, "y0": 0.8, "x1": 11.6, "y1": 3.3}
+    assert slots["P8"]["rect"] == {"x0": 4.3, "y0": 9.6, "x1": 7.5, "y1": 11.4}
+
+    # 다른 빌라(햇살빌라) 차고지 상세도 사이트 키를 받는다
+    garage = (await client.get(f"/api/v1/garages/{result.sunny_id}", headers=headers)).json()
+    assert garage["site_key"] == "sunny"
     assert [label for label, s in slots.items() if not s["is_active"]] == ["P8"]
 
     status = (await client.get(f"/api/v1/buildings/{result.hanbit_id}/status", headers=headers)).json()

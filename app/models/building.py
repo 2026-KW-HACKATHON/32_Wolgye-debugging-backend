@@ -24,6 +24,8 @@ class Building(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)  # 예: 월계 한빛빌라
     address: Mapped[str] = mapped_column(String(255), nullable=False)  # 예: 노원구 광운로19가길
     detail_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # FE 배치도 사이트 파일 키 (public/sites/{site_key}.json). null 이면 FE 가 칸 rect 로 그린다 (#47)
+    site_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     # 관리자가 입주민에게 전달하는 초대코드
     invite_code: Mapped[str] = mapped_column(String(12), nullable=False, unique=True)

@@ -61,6 +61,18 @@ SUNNY_ZONES = [
     ("필로티 외부", GarageType.PILOTI_OUT, 2),
     ("건물 앞", GarageType.PILOTI_OUT, 1),
 ]
+# 한빛빌라 칸 좌표(미터, x0, y0, x1, y1). FE 사이트 파일 hanbit.json 의 px ÷ 50 과 같다 (#47).
+# 좌표가 없는 빌라(햇살빌라)는 임시 격자로 둔다. FE 는 사이트 파일 좌표를 먼저 쓴다
+HANBIT_RECTS = {
+    "P1": (9.1, 0.8, 11.6, 3.3),
+    "P2": (12.0, 0.8, 14.5, 3.3),
+    "P3": (9.1, 3.7, 11.6, 6.2),
+    "P4": (12.0, 3.7, 14.5, 6.2),
+    "P5": (9.1, 6.6, 11.6, 9.1),
+    "P6": (12.0, 6.6, 14.5, 9.1),
+    "P7": (0.7, 9.6, 3.9, 11.4),
+    "P8": (4.3, 9.6, 7.5, 11.4),
+}
 # 명세 Mock 공유 조건: 07~23시, 시간당 2토큰, 최대 4시간
 OFFER_TERMS = {"start_hour": 7, "end_hour": 23, "hourly_price": 2, "max_hours": 4}
 
@@ -80,7 +92,16 @@ async def _add[T](db: AsyncSession, obj: T) -> T:
 
 
 async def _building(
-    db: AsyncSession, alley: Alley, name: str, address: str, invite_code: str, lng: float, lat: float, zones: list
+    db: AsyncSession,
+    alley: Alley,
+    name: str,
+    address: str,
+    invite_code: str,
+    lng: float,
+    lat: float,
+    zones: list,
+    site_key: str,
+    rects: dict[str, tuple[float, float, float, float]] | None = None,
 ) -> tuple[Building, dict[str, ParkingSlot]]:
     building = await _add(
         db,
@@ -89,6 +110,7 @@ async def _building(
             name=name,
             address=address,
             invite_code=invite_code,
+            site_key=site_key,
             location=WKTElement(f"POINT({lng} {lat})", srid=4326),
         ),
     )
@@ -100,13 +122,12 @@ async def _building(
         )
         for number in range(1, count + 1):
             ordinal += 1
-            x = 3.0 * sort_order
-            y = 5.0 * (number - 1)
-            slots[f"P{ordinal}"] = await _add(
+            label = f"P{ordinal}"
+            x, y = 3.0 * sort_order, 5.0 * (number - 1)
+            x0, y0, x1, y1 = (rects or {}).get(label, (x, y, x + 2.5, y + 5.0))
+            slots[label] = await _add(
                 db,
-                ParkingSlot(
-                    garage_id=garage.id, number=number, render_x0=x, render_y0=y, render_x1=x + 2.5, render_y1=y + 5.0
-                ),
+                ParkingSlot(garage_id=garage.id, number=number, render_x0=x0, render_y0=y0, render_x1=x1, render_y1=y1),
             )
     return building, slots
 
@@ -173,10 +194,12 @@ async def seed(db: AsyncSession, now: datetime | None = None) -> SeedResult:
 
     alley = await _add(db, Alley(name="광운로19가길"))
     hanbit, hp = await _building(
-        db, alley, "월계 한빛빌라", "서울 노원구 광운로19가길 12", HANBIT_INVITE_CODE, 127.0590, 37.6195, HANBIT_ZONES
+        db, alley, "월계 한빛빌라", "서울 노원구 광운로19가길 12", HANBIT_INVITE_CODE, 127.0590, 37.6195, HANBIT_ZONES,
+        site_key="hanbit", rects=HANBIT_RECTS,
     )
     sunny, sp = await _building(
-        db, alley, "햇살빌라", "서울 노원구 광운로19가길 20", SUNNY_INVITE_CODE, 127.0596, 37.6199, SUNNY_ZONES
+        db, alley, "햇살빌라", "서울 노원구 광운로19가길 20", SUNNY_INVITE_CODE, 127.0596, 37.6199, SUNNY_ZONES,
+        site_key="sunny",
     )
     for inner, outer in (("P1", "P2"), ("P4", "P5"), ("P7", "P8")):
         hp[inner].front_slot_id = hp[outer].id
