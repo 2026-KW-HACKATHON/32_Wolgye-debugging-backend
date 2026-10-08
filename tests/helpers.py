@@ -1,6 +1,9 @@
 """API 테스트 공용 검사 함수."""
 
+import io
+
 from httpx import Response
+from PIL import Image
 
 from app.core.error_codes import ErrorCode
 from app.core.security import create_access_token
@@ -25,3 +28,17 @@ def auth_headers(resident) -> dict[str, str]:
     로그인 API 를 거치지 않으므로 password_hash 가 없는 factories 의 resident 에도 쓸 수 있다.
     """
     return {"Authorization": f"Bearer {create_access_token(resident.id)}"}
+
+
+def jpeg(size: tuple[int, int] = (64, 48), exif: bool = False, fmt: str = "JPEG") -> bytes:
+    """테스트용 사진 바이트 (미등록 차량 제보 #52). exif=True 면 제조사·GPS 메타데이터를 넣는다."""
+    image = Image.new("RGB", size, "red")
+    out = io.BytesIO()
+    if exif:
+        data = Image.Exif()
+        data[0x010F] = "PhoneMaker"  # Make
+        data[0x8825] = {2: (37.0, 37.0, 0.0)}  # GPSInfo
+        image.save(out, format=fmt, exif=data.tobytes())
+    else:
+        image.save(out, format=fmt)
+    return out.getvalue()

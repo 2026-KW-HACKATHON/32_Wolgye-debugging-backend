@@ -81,6 +81,7 @@ class GarageDetail(BaseModel):
     id: int
     name: str
     address: str
+    site_key: str | None  # FE 배치도 사이트 파일 키 (BuildingLayout.site_key 와 같다)
     alley: IdName
     summary: GarageSummaryOut
     slots: list[GarageSlot]
@@ -92,6 +93,7 @@ class GarageDetail(BaseModel):
             id=data.building.id,
             name=data.building.name,
             address=data.building.address,
+            site_key=data.building.site_key,
             alley=IdName(id=data.alley.id, name=data.alley.name),
             summary=GarageSummaryOut(
                 start_hour=s.start_hour, end_hour=s.end_hour, min_hourly_price=s.min_hourly_price, max_hours=s.max_hours

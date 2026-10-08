@@ -7,3 +7,5 @@ venv/
 .pytest_cache/
 *.egg-info/
 .DS_Store
+# 미등록 차량 제보 사진 (#52, REPORT_PHOTO_DIR)
+data/

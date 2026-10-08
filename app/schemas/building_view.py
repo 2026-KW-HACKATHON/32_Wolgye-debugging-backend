@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from app.core.enum_maps import BuildingRole
 from app.schemas.admin import OccupantType
 from app.schemas.common import KstDatetime, PlateOut
-from app.schemas.my_vehicle import ExitSource, ParkingState
+from app.schemas.my_vehicle import ExitSource, ParkedBuilding, ParkingState
 from app.schemas.notification import NotificationItem
 from app.schemas.user import AlleyRef
 
@@ -46,6 +46,7 @@ class LayoutZone(BaseModel):
 class BuildingLayout(BaseModel):
     building_id: int
     name: str
+    site_key: str | None  # FE 배치도 사이트 파일 키 (public/sites/{site_key}.json). null 이면 칸 rect 로 그린다
     alley: AlleyRef
     zones: list[LayoutZone]
 
@@ -131,6 +132,8 @@ class HomeParking(BaseModel):
     slot_label: str
     state: ParkingState
     expected_exit_at: KstDatetime | None
+    building: ParkedBuilding  # 차가 서 있는 빌라 (backend #51)
+    is_shared: bool  # 내 빌라가 아닌 공유 주차장 칸이면 true
 
 
 class HomeBlockAlert(BaseModel):

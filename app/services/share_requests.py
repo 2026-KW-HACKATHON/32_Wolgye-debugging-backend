@@ -140,6 +140,11 @@ def _request_end(request_date: date, end_hour: int) -> datetime:
     return datetime.combine(request_date, time(0), tzinfo=KST) + timedelta(hours=end_hour)
 
 
+def share_ends_at(share: ShareRequest) -> datetime:
+    """공유가 끝나는 시각 (KST `request_date + end_hour`, end_hour = 24 는 다음 날 0시)."""
+    return _request_end(share.request_date, share.end_hour)
+
+
 async def create_for_user(
     db: AsyncSession,
     user: Resident,

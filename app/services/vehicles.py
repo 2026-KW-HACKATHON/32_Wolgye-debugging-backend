@@ -17,6 +17,7 @@ from app.schemas.my_vehicle import (
     ExitSource,
     MyVehicleCreate,
     MyVehicleUpdate,
+    ParkedBuilding,
     ParkingState,
     VehicleDetail,
     VehicleListItem,
@@ -27,7 +28,7 @@ from app.schemas.my_vehicle import (
 )
 from app.services import departures
 from app.services.exceptions import ConflictError, NotFoundError
-from app.services.slot_labels import slot_label
+from app.services.slot_labels import slot_building, slot_label
 
 STATUS_TEXT = {VehicleStatus.PARKED: "현재 주차 중", VehicleStatus.OUT: "외부 출차"}
 PLATE_EXISTS_MESSAGE = "이미 등록된 차량 번호입니다."
@@ -165,12 +166,15 @@ async def get_my_vehicle(
     parking = schedule = None
     assignment = await _active_assignment(db, vehicle.id)
     if assignment is not None:
+        building = await slot_building(db, assignment.slot_id)
         parking = VehicleParking(
             parking_id=assignment.id,
             slot_id=assignment.slot_id,
             slot_label=await slot_label(db, assignment.slot_id),
             entered_at=assignment.assigned_at,
             state=ParkingState.PARKED,
+            building=ParkedBuilding(id=building.id, name=building.name),
+            is_shared=building.id != user.building_id,
         )
         # 상시 주차는 출차 시간이 없다 (결정 10: NONE)
         departure = None if assignment.is_permanent else await departures.next_departure(db, vehicle.id, now)

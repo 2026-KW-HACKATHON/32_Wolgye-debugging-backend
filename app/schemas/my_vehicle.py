@@ -98,12 +98,21 @@ class VehicleOwner(BaseModel):
     unit: str | None
 
 
+class ParkedBuilding(BaseModel):
+    """차가 서 있는 빌라. 공유 주차장(다른 빌라)에 세웠으면 그 빌라 (backend #51)."""
+
+    id: int
+    name: str
+
+
 class VehicleParking(BaseModel):
     parking_id: int
     slot_id: int
     slot_label: str
     entered_at: KstDatetime
     state: ParkingState
+    building: ParkedBuilding
+    is_shared: bool  # 내 빌라가 아닌 공유 주차장 칸이면 true
 
 
 class VehicleSchedule(BaseModel):

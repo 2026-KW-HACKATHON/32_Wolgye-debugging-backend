@@ -14,6 +14,9 @@ services:
     image: ${API_IMAGE:?API_IMAGE 가 필요합니다}
     restart: unless-stopped
     env_file: .env
+    # 미등록 차량 제보 사진 (#52). 컨테이너를 새로 띄워도 남는다 (인스턴스를 바꾸면 사라짐 → 이후 S3)
+    volumes:
+      - vehicle_reports:/app/data/vehicle-reports
     # 외부에는 nginx 만 연다. 호스트의 헬스체크(deploy.sh)용으로 127.0.0.1 에만 붙인다
     ports:
       - "127.0.0.1:8000:8000"
@@ -36,3 +39,6 @@ services:
       api:
         condition: service_healthy
     logging: *logging
+
+volumes:
+  vehicle_reports:

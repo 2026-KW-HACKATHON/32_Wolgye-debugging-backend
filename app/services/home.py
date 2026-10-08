@@ -34,13 +34,13 @@ from app.schemas.building_view import (
     SlotState,
 )
 from app.schemas.common import KST
-from app.schemas.my_vehicle import ParkingState
+from app.schemas.my_vehicle import ParkedBuilding, ParkingState
 from app.schemas.notification import NotificationItem
 from app.services import blocking
 from app.services.building_view import BuildingSnapshot, snapshot
 from app.services.exceptions import ForbiddenError
 from app.services.permissions import NOT_MEMBER_MESSAGE
-from app.services.slot_labels import slot_label
+from app.services.slot_labels import slot_building, slot_label
 
 RECENT_NOTIFICATIONS = 2  # 와이어프레임 홈 화면의 "최근 알림" 카드 수
 
@@ -82,6 +82,7 @@ async def get_home(db: AsyncSession, user: Resident, now: datetime | None = None
     assignment = await _my_parking(db, user)
     if assignment is not None:
         # 다른 빌라 칸(공유 이용)에 세워 둔 경우에도 보여준다
+        parked_in = building if assignment.slot_id in snap.labels else await slot_building(db, assignment.slot_id)
         occupant = snap.occupants.get(assignment.slot_id) or (
             await blocking.occupants(db, [assignment.slot_id], now)
         )[assignment.slot_id]
@@ -93,6 +94,8 @@ async def get_home(db: AsyncSession, user: Resident, now: datetime | None = None
             slot_label=snap.labels.get(assignment.slot_id) or await slot_label(db, assignment.slot_id),
             state=ParkingState.PARKED,
             expected_exit_at=occupant.exit_at,
+            building=ParkedBuilding(id=parked_in.id, name=parked_in.name),
+            is_shared=parked_in.id != building.id,
         )
         blockers = snap.blocks[assignment.slot_id].blocked_by if assignment.slot_id in snap.blocks else []
         if blockers:
