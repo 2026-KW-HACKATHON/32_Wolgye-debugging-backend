@@ -20,7 +20,7 @@ from app.models.vehicle import Vehicle
 from app.schemas.common import KST
 from app.schemas.my_vehicle import ExitSource, ParkingState
 from app.schemas.parking import ParkingCreate, ParkingCreated, ParkingExited, ParkingSchedule, ParkingScheduleUpdate
-from app.services import blocking, departures, notifications
+from app.services import blocking, departures, notifications, share_requests
 from app.services.exceptions import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 from app.services.permissions import NOT_MEMBER_MESSAGE
 from app.services.slot_labels import slot_label
@@ -36,6 +36,36 @@ WEEKDAYS = [0, 1, 2, 3, 4]  # 월~금
 def _ensure_future(exit_at: datetime, now: datetime) -> None:
     if exit_at <= now:
         raise InvalidInputError(detail={"field": "expected_exit_at", "reason": "출차 예정 시각은 지금 이후여야 합니다."})
+
+
+def _ensure_within_share(exit_at: datetime | None, share_end: datetime | None) -> None:
+    """공유 칸(다른 빌라 칸)은 공유가 끝나기 전에 나가야 한다. 상시 주차·공유 종료 후 출차·끝난 공유면 400 INVALID_INPUT."""
+    if share_end is None:
+        raise InvalidInputError(detail={"field": "expected_exit_at", "reason": "공유 이용 시간이 끝났습니다."})
+    if exit_at is None or exit_at > share_end:
+        raise InvalidInputError(
+            detail={
+                "field": "expected_exit_at",
+                "reason": f"공유 이용 시간({share_end.astimezone(KST):%H:%M})까지 출차해야 합니다.",
+                "share_ends_at": share_end.isoformat(),
+            }
+        )
+
+
+async def _slot_building_id(db: AsyncSession, slot_id: int) -> int | None:
+    return await db.scalar(
+        select(Garage.building_id)
+        .join(ParkingSlot, ParkingSlot.garage_id == Garage.id)
+        .where(ParkingSlot.id == slot_id)
+    )
+
+
+async def _my_share_end(db: AsyncSession, user: Resident, slot_id: int, now: datetime) -> datetime | None:
+    """slot_id 칸에서 지금 진행 중인 내 수락된 공유가 끝나는 시각. 없으면 None."""
+    share = await blocking.accepted_share(db, slot_id, now)
+    if share is None or share.requester_id != user.id:
+        return None
+    return share_requests.share_ends_at(share)
 
 
 async def _lock_slot_with_neighbors(db: AsyncSession, slot_id: int) -> ParkingSlot | None:
@@ -63,6 +93,7 @@ async def create_parking(
 
     - 내 차량이 아니거나 칸이 없으면 404 NOT_FOUND
     - 다른 빌라 칸이면 403 NOT_BUILDING_MEMBER. 단, 그 칸에 지금 진행 중인 내 수락된 공유가 있으면 주차할 수 있다
+      (공유 칸은 상시 주차할 수 없고, 출차 예정이 공유 종료 시각을 넘으면 400 INVALID_INPUT, backend #51)
     - 이 차가 이미 주차 중이면 409 VEHICLE_ALREADY_PARKED (detail.parking_id)
     - 비활성 칸이거나 지금부터 내 출차 시각까지 다른 사람의 수락된 공유가 있으면 409 SLOT_UNAVAILABLE (detail.reason),
       다른 차가 있으면 409 SLOT_OCCUPIED
@@ -78,10 +109,11 @@ async def create_parking(
         raise NotFoundError("칸을 찾을 수 없습니다.")
     building_id = await db.scalar(select(Garage.building_id).where(Garage.id == slot.garage_id))
 
-    share = await blocking.accepted_share(db, slot.id, now)
-    my_share = share is not None and share.requester_id == user.id
-    if user.building_id != building_id and not my_share:
-        raise ForbiddenError(NOT_MEMBER_MESSAGE, code=ErrorCode.NOT_BUILDING_MEMBER)
+    if user.building_id != building_id:
+        share_end = await _my_share_end(db, user, slot.id, now)
+        if share_end is None:
+            raise ForbiddenError(NOT_MEMBER_MESSAGE, code=ErrorCode.NOT_BUILDING_MEMBER)
+        _ensure_within_share(exit_at, share_end)
 
     parked = await _active_assignment_of_vehicle(db, vehicle.id)
     if parked is not None:
@@ -162,10 +194,13 @@ async def update_schedule(
     """배치는 그대로 두고 출차 예정만 바꾼다. 상시 주차였다면 시간이 생기므로 상시 주차를 푼다.
 
     출차 시간을 앞당겼고(없던 시간이 생긴 경우 포함) 이 차를 막는 차가 있으면 막는 차 주인에게 즉시 BLOCK_ALERT.
+    공유 칸(다른 빌라 칸)이면 공유 종료 시각을 넘길 수 없다 (400 INVALID_INPUT, backend #51).
     """
     now = now or datetime.now(KST)
     _ensure_future(payload.expected_exit_at, now)
     assignment = await _my_active_parking(db, user, parking_id)
+    if await _slot_building_id(db, assignment.slot_id) != user.building_id:
+        _ensure_within_share(payload.expected_exit_at, await _my_share_end(db, user, assignment.slot_id, now))
 
     previous = None
     if not assignment.is_permanent:
@@ -203,11 +238,7 @@ async def exit_parking(db: AsyncSession, user: Resident, parking_id: int, now: d
     assignment.is_active = False
     assignment.released_at = now
 
-    building_id = await db.scalar(
-        select(Garage.building_id)
-        .join(ParkingSlot, ParkingSlot.garage_id == Garage.id)
-        .where(ParkingSlot.id == assignment.slot_id)
-    )
+    building_id = await _slot_building_id(db, assignment.slot_id)
     body = f"{await slot_label(db, assignment.slot_id)} 비어 있음"
     neighbor_ids = await db.scalars(
         select(Resident.id).where(Resident.building_id == building_id, Resident.id != user.id)

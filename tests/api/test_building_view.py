@@ -188,6 +188,8 @@ async def test_home(client, villa):
         "slot_label": "P1",
         "state": "PARKED",
         "expected_exit_at": villa["my_exit"].isoformat(),
+        "building": {"id": villa["building"].id, "name": "월계 한빛빌라"},
+        "is_shared": False,
     }
     assert body["block_alert"] == {
         "blocking_parking_id": villa["neighbor_parking"].id,
