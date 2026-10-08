@@ -108,7 +108,7 @@ python -m app.jobs.seed_demo
 ```
 
 ### 5) 운영 배포 (AWS EC2)
-`main`에 머지하고 CI가 통과하면 `.github/workflows/deploy.yml`이 이미지를 ECR에 올리고 EC2에 배포합니다. DB는 RDS를 씁니다. 운영 구성은 `docker-compose.prod.yml`(api + nginx)과 `deploy/`에 있고, 로컬 개발용 `docker-compose.yml`과는 별개입니다. AWS 처음 설정, 롤백 방식, 운영 명령은 [`docs/worklog`의 AWS 배포 문서](docs/worklog/2026-10-06-2205-aws-ec2-배포.md)에 있습니다.
+개발은 `dev`에서 하고, 배포할 때 `dev` → `main` PR을 머지합니다. `main`에 머지되어 CI가 통과하면 `.github/workflows/deploy.yml`이 이미지를 ECR에 올리고 EC2에 배포합니다. DB는 RDS를 씁니다. 운영 구성은 `docker-compose.prod.yml`(api + nginx)과 `deploy/`에 있고, 로컬 개발용 `docker-compose.yml`과는 별개입니다. AWS 처음 설정, 롤백 방식, 운영 명령은 [`docs/worklog`의 AWS 배포 문서](docs/worklog/2026-10-06-2205-aws-ec2-배포.md)에 있습니다.
 
 ## 마이그레이션 (Alembic)
 | 리비전 | 내용 |
@@ -200,6 +200,6 @@ npx http-server -p 8080
   ```
 
 ## CI (`.github/workflows/ci.yml`)
-`main`에 push하거나 PR을 올리면 실행됩니다.
+`dev`·`main`에 push하거나 두 브랜치로 PR을 올리면 실행됩니다.
 1. **test** job: PostGIS 서비스를 띄운 뒤 `ruff check .` → `alembic upgrade head` → `alembic check` → `pytest -q`
 2. **docker** job: `docker build`로 이미지 빌드
