@@ -20,7 +20,7 @@ info:
     | 계층 | Building > Zone > Lane > Slot (`depth`) | **골목(Alley) > 빌라(Building) = 차고지 > 주차 구역(Zone) > 칸(Slot)**. 주차 구역은 필로티 안쪽·건물 앞·골목 같은 묶음 (DB 테이블 이름은 `garages`). 막힘은 `front_slot_id` 로 계산 |
     | 사용자–빌라 | 여러 빌라 소속 가능 (`BuildingMember`) | **한 사용자는 한 빌라에만 소속** (`residents.building_id`). 이미 소속된 사용자가 합류하면 409 |
 
-    > ✅ **이 명세의 엔드포인트 45개는 모두 서버에 구현되어 있습니다** (2026-10-05, 로컬 서버 `/openapi.json` 과 경로·파라미터·요청/응답 필드 대조). 예전 구 API(`/alleys`, `/buildings` 목록·생성·상세, `/departures`, `/parking-slots`, `/share-offers`, `/vehicles`, `GET /share-requests`, `POST /share-requests/{id}/decision`)는 이슈 #15 에서 **삭제했습니다**. 서버 Swagger 에도 이제 이 명세의 45개만 보입니다.
+    > ✅ **이 명세의 엔드포인트 49개는 모두 서버에 구현되어 있습니다** (2026-10-05, 미등록 차량 제보 4개는 2026-10-08 #52 추가, 로컬 서버 `/openapi.json` 과 경로·파라미터·요청/응답 필드 대조). 예전 구 API(`/alleys`, `/buildings` 목록·생성·상세, `/departures`, `/parking-slots`, `/share-offers`, `/vehicles`, `GET /share-requests`, `POST /share-requests/{id}/decision`)는 이슈 #15 에서 **삭제했습니다**. 서버 Swagger 에도 이제 이 명세의 49개만 보입니다.
 
     ### 공통 규칙
     | 항목 | 규칙 |
@@ -99,6 +99,7 @@ tags:
   - { name: share-requests, description: "공유 요청과 결과 확인 (#15~#17). 이용료는 토큰" }
   - { name: admin, description: "관리인 (#18~#21), 🛠 해당 빌라 관리인만" }
   - { name: notifications, description: "알림 목록 (알림 탭, 화면 미작성)" }
+  - { name: vehicle-reports, description: "미등록 차량 사진 제보 (backend #52, FE #63). 제보하면 미확인 차량 등록 + 관리인 알림 + 보상 토큰" }
   - { name: health, description: 상태 확인 }
 
 paths:
@@ -1326,6 +1327,106 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: SLOT_OCCUPIED, message: 이미 다른 차량이 주차 중인 칸입니다., detail: null } }
 
+  # ───────────────────────── 미등록 차량 제보 (#52) ─────────────────────────
+  /buildings/{building_id}/vehicle-reports:
+    post:
+      tags: [vehicle-reports]
+      summary: 👤 미등록 차량 사진 제보
+      description: |
+        앱에 없는 차를 사진으로 제보합니다. **한 트랜잭션**으로 아래가 함께 일어납니다.
+        - 그 칸에 미확인 차량(`occupant_type=UNKNOWN`) 배치 → 배치도·현황·막힘 판정에 바로 반영
+        - 빌라의 모든 관리인(제보자 본인 제외)에게 `VEHICLE_REPORT` 알림 (`link: { screen: VEHICLE_REPORT, id: 제보 id }`)
+        - 제보자에게 **500 토큰** 시스템 지급
+        사진: JPEG·PNG, 10MB 이하. 서버가 EXIF(위치정보 등)를 지우고 긴 변 1600px JPEG 로 다시 저장합니다.
+        검증 순서: 403 `NOT_BUILDING_MEMBER` → 400 `INVALID_INPUT`(`detail.field` = `photo` | `plate`) → 409 `REPORT_LIMIT_EXCEEDED`(1인 하루(KST) 3회) →
+        404(이 빌라에 없는 칸) → 409 `SLOT_UNAVAILABLE`(비활성 칸) · `SLOT_OCCUPIED`(차 있음) · `PLATE_EXISTS`(앱에 등록된 차 → 이동 요청 안내) · `VEHICLE_ALREADY_PARKED`(같은 번호판 미확인 차량이 다른 칸에 있음)
+      operationId: createVehicleReport
+      x-priority: 향후
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo, plate, slot_id]
+              properties:
+                photo: { type: string, format: binary, description: "차량 사진 (JPEG·PNG, 10MB 이하)" }
+                plate: { type: string, description: "차량 번호. 공백 유무 모두 허용", example: 45다 6789 }
+                slot_id: { type: integer, example: 1006 }
+      responses:
+        "201":
+          description: 제보됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleReportCreated" }
+              example: { report_id: 12, vehicle_id: 31, parking_id: 559, slot_label: P6, occupant_type: UNKNOWN, reward_tokens: 500, token_balance: 500500 }
+        "400": { $ref: "#/components/responses/InvalidInput" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingMember" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 칸·번호판·하루 한도
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                limit: { summary: 하루 한도 초과, value: { error: { code: REPORT_LIMIT_EXCEEDED, message: 오늘은 더 제보할 수 없어요., detail: { limit: 3 } } } }
+                plateExists: { summary: 앱에 등록된 차, value: { error: { code: PLATE_EXISTS, message: 이미 등록된 차량 번호입니다., detail: null } } }
+  /vehicle-reports/{report_id}:
+    get:
+      tags: [vehicle-reports]
+      summary: 👤 제보 상세 (제보자 본인·그 빌라 관리인)
+      description: "알림(`VEHICLE_REPORT`) 탭 → 이 화면. 볼 수 없는 사람에게는 404 입니다."
+      operationId: getVehicleReport
+      x-priority: 향후
+      parameters:
+        - { $ref: "#/components/parameters/ReportId" }
+      responses:
+        "200":
+          description: 제보 상세
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleReportDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicle-reports/{report_id}/photo:
+    get:
+      tags: [vehicle-reports]
+      summary: 👤 제보 사진 (제보자 본인·그 빌라 관리인)
+      description: "번호판이 찍힌 개인정보라 공개 URL 이 없습니다. Bearer 인증으로 받아 Blob 으로 그립니다. `Cache-Control: private`"
+      operationId: getVehicleReportPhoto
+      x-priority: 향후
+      parameters:
+        - { $ref: "#/components/parameters/ReportId" }
+      responses:
+        "200":
+          description: 사진 (JPEG)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/buildings/{building_id}/vehicle-reports:
+    get:
+      tags: [admin, vehicle-reports]
+      summary: 🛠 제보 목록 (최신순)
+      operationId: listVehicleReports
+      x-priority: 향후
+      parameters:
+        - { $ref: "#/components/parameters/BuildingId" }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: 제보 목록
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleReportPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotBuildingAdmin" }
+
   # ───────────────────────── 알림 ─────────────────────────
   /notifications:
     get:
@@ -1399,6 +1500,7 @@ components:
     ParkingId: { name: parking_id, in: path, required: true, schema: { type: integer }, example: 556 }
     MoveRequestId: { name: move_request_id, in: path, required: true, schema: { type: integer }, example: 44 }
     GarageId: { name: garage_id, in: path, required: true, description: 차고지 id = 빌라 id, schema: { type: integer }, example: 4 }
+    ReportId: { name: report_id, in: path, required: true, schema: { type: integer }, example: 12 }
     ShareRequestId: { name: share_request_id, in: path, required: true, schema: { type: integer }, example: 301 }
     OfferId: { name: offer_id, in: path, required: true, schema: { type: integer }, example: 401 }
     Cursor: { name: cursor, in: query, required: false, description: 이전 응답의 next_cursor, schema: { type: string } }
@@ -1454,7 +1556,7 @@ components:
       description: |
         400 `INVALID_INPUT` · 401 `UNAUTHORIZED` `INVALID_CREDENTIALS` · 403 `NOT_BUILDING_MEMBER` `NOT_BUILDING_ADMIN` ·
         404 `NOT_FOUND` `INVALID_INVITE_CODE` · 409 `CONFLICT`(범용, 현재 상태와 충돌) `EMAIL_EXISTS` `SLOT_OCCUPIED` `SLOT_UNAVAILABLE` `VEHICLE_ALREADY_PARKED` `GARAGE_TIME_CONFLICT`.
-        **제안(v0.2 미정의)**: `PLATE_EXISTS` `ALREADY_DECIDED` `MOVE_REQUEST_ALREADY_PENDING` `ALREADY_IN_BUILDING` `INSUFFICIENT_TOKENS` (모두 409)
+        **제안(v0.2 미정의)**: `PLATE_EXISTS` `ALREADY_DECIDED` `MOVE_REQUEST_ALREADY_PENDING` `ALREADY_IN_BUILDING` `INSUFFICIENT_TOKENS` `REPORT_LIMIT_EXCEEDED`(미등록 차량 제보 하루 한도, #52) (모두 409)
       enum:
         - INVALID_INPUT
         - UNAUTHORIZED
@@ -1474,6 +1576,7 @@ components:
         - MOVE_REQUEST_ALREADY_PENDING
         - ALREADY_IN_BUILDING
         - INSUFFICIENT_TOKENS
+        - REPORT_LIMIT_EXCEEDED
     Weekday:
       type: string
       enum: [MON, TUE, WED, THU, FRI, SAT, SUN]
@@ -1517,12 +1620,13 @@ components:
     ShareRequestStatus: { type: string, enum: [PENDING, APPROVED, REJECTED], description: "DB 는 PENDING / ACCEPTED / REJECTED" }
     NotificationType:
       type: string
-      enum: [BLOCK_ALERT, MOVE_REQUEST, EXIT_DONE, SHARE_REQUEST, SHARE_RESULT]
+      enum: [BLOCK_ALERT, MOVE_REQUEST, EXIT_DONE, SHARE_REQUEST, SHARE_RESULT, VEHICLE_REPORT]
       description: |
         와이어프레임에 나오는 알림만 둡니다.
         `BLOCK_ALERT` 막힘 알림(전날 밤 사전 알림 포함, 홈 막힘 카드) · `MOVE_REQUEST` 이동 요청 도착 ·
-        `EXIT_DONE` 출차 완료 안내 · `SHARE_REQUEST` 공유 사용 요청(관리인) · `SHARE_RESULT` 공유 요청 수락/거절 결과.
-        DB `notification_type` 과 같음 (마이그레이션 0004)
+        `EXIT_DONE` 출차 완료 안내 · `SHARE_REQUEST` 공유 사용 요청(관리인) · `SHARE_RESULT` 공유 요청 수락/거절 결과 ·
+        `VEHICLE_REPORT` 미등록 차량 제보 도착(관리인, #52).
+        DB `notification_type` 과 같음 (마이그레이션 0004, 0006)
     VehicleColor: { type: string, enum: [검정, 흰색, 은색, 회색, 파랑, 빨강, 기타] }
 
     # ── 인증 · 사용자 ──
@@ -2216,11 +2320,43 @@ components:
           properties:
             screen:
               type: string
-              enum: [MOVE_REQUEST, SHARE_REQUEST, HOME]
-              description: "이동할 화면. 알림 종류별로 정해짐 (결정 11): MOVE_REQUEST → MOVE_REQUEST(id = 이동 요청 id) · SHARE_REQUEST·SHARE_RESULT → SHARE_REQUEST(id = 공유 요청 id) · BLOCK_ALERT → HOME(id = null). EXIT_DONE 은 link 자체가 null"
+              enum: [MOVE_REQUEST, SHARE_REQUEST, HOME, VEHICLE_REPORT]
+              description: "이동할 화면. 알림 종류별로 정해짐 (결정 11): MOVE_REQUEST → MOVE_REQUEST(id = 이동 요청 id) · SHARE_REQUEST·SHARE_RESULT → SHARE_REQUEST(id = 공유 요청 id) · VEHICLE_REPORT → VEHICLE_REPORT(id = 제보 id, #52) · BLOCK_ALERT → HOME(id = null). EXIT_DONE 은 link 자체가 null"
             id: { type: [integer, "null"], description: "대상 id. HOME 처럼 대상이 없는 화면이면 null" }
         is_read: { type: boolean }
         created_at: { type: string, format: date-time }
+    VehicleReportCreated:
+      type: object
+      properties:
+        report_id: { type: integer }
+        vehicle_id: { type: integer }
+        parking_id: { type: integer }
+        slot_label: { type: string }
+        occupant_type: { $ref: "#/components/schemas/OccupantType" }
+        reward_tokens: { type: integer, description: 지급한 보상 토큰 (500) }
+        token_balance: { type: integer, description: 보상 지급 후 내 잔액 }
+    VehicleReportDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        building_id: { type: integer }
+        plate: { type: string, example: 45다 6789 }
+        slot_label: { type: string }
+        photo_url: { type: string, description: "API 기준 경로 (/vehicle-reports/{id}/photo). Bearer 인증 필요", example: /vehicle-reports/12/photo }
+        reporter:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string, description: 이름. 없으면 닉네임 }
+        status: { type: string, enum: [SUBMITTED, DISMISSED], description: "DISMISSED = 관리인이 허위 제보로 기각 (기각 API 는 향후)" }
+        created_at: { type: string, format: date-time }
+    VehicleReportPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VehicleReportDetail" }
+        next_cursor: { type: [string, "null"] }
     NotificationPage:
       type: object
       properties:

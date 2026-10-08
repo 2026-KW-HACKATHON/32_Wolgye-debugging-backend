@@ -128,7 +128,7 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 - 새 모델은 **`app/models/__init__.py`에 반드시 import 해 주세요.** 빠뜨리면 앱 실행 중 relationship 문자열 참조가 해석되지 않아 500 오류가 나고, Alembic도 새 테이블을 인식하지 못합니다.
 
 ## API
-명세 `docs/openapi-mock.yaml`의 **45개 엔드포인트가 모두 구현**되어 있습니다. 자세한 요청·응답은 [명세 페이지](https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/)나 서버 실행 후 http://localhost:8000/docs 에서 봅니다. 모든 경로 앞에 `/api/v1`이 붙습니다 (`/health` 제외).
+명세 `docs/openapi-mock.yaml`의 **49개 엔드포인트가 모두 구현**되어 있습니다. 자세한 요청·응답은 [명세 페이지](https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/)나 서버 실행 후 http://localhost:8000/docs 에서 봅니다. 모든 경로 앞에 `/api/v1`이 붙습니다 (`/health` 제외).
 
 | 태그 | 엔드포인트 | 이슈 |
 |---|---|---|
@@ -143,6 +143,7 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 | share-requests | `POST /share-requests`, `GET /share-requests/{id}`, `GET /me/share-requests` | #12 |
 | admin | `GET` · `POST /admin/buildings/{id}/share-offers`, `PATCH` · `DELETE /admin/share-offers/{id}`, `GET /admin/buildings/{id}/share-requests`, `PATCH /admin/share-requests/{id}`, `GET /admin/buildings/{id}/dashboard`, `GET /admin/buildings/{id}/slots`, `PATCH /admin/slots/{id}`, `POST /admin/buildings/{id}/unknown-vehicles` | #13, #14 |
 | notifications | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` | #11 |
+| vehicle-reports | `POST /buildings/{id}/vehicle-reports`(multipart), `GET /vehicle-reports/{id}`, `GET /vehicle-reports/{id}/photo`, `GET /admin/buildings/{id}/vehicle-reports` | #52 |
 | health | `GET /health` | — |
 
 - 인증은 `Authorization: Bearer <access_token>` (access 30분, refresh 14일). 에러는 모두 `{"error": {"code", "message", "detail"}}`
@@ -150,7 +151,7 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 - 전날 밤 막힘 알림은 API가 아니라 따로 실행하는 작업입니다 (위 "실행"의 3번)
 
 ### Swagger 명세서 (Mock 데이터)
-서버나 DB 없이 API 명세를 볼 수 있습니다. **Figma 와이어프레임을 기준으로, Notion "차곡차곡 API 명세 v0.2"를 초안 삼아 만든 설계 명세**이고, 45개 엔드포인트의 예시 요청·응답과 에러 코드를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
+서버나 DB 없이 API 명세를 볼 수 있습니다. **Figma 와이어프레임을 기준으로, Notion "차곡차곡 API 명세 v0.2"를 초안 삼아 만든 설계 명세**이고, 49개 엔드포인트의 예시 요청·응답과 에러 코드를 담았습니다. **예시 값은 전부 가짜 데이터**이고, 실제 서버가 이 값을 돌려주는 것은 아닙니다.
 
 > 📌 **Notion의 기능 명세(API 명세 v0.2)는 임시 API 명세입니다.** 기능·화면의 기준은 **Figma 와이어프레임**이고(요구사항은 Manyfast), Notion 명세와 다르면 Figma 쪽에 맞춥니다. 엔드포인트·필드·에러 코드는 확정이 아니며, 이 Mock 명세도 최종 계약으로 보지 마세요. DB에 저장할 곳이 없는 기능(알림 설정, 푸시 구독 등)은 API로 만들지 않았습니다.
 

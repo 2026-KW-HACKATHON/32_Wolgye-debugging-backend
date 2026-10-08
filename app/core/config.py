@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # 가입 시 시스템 지급 토큰 (결정 6)
     signup_token_grant: int = 500_000
 
+    # 미등록 차량 제보 (#52). 사진은 REPORT_PHOTO_DIR 에 저장한다 (운영은 docker 볼륨)
+    report_token_reward: int = 500
+    report_daily_limit: int = 3  # 1인 하루(KST) 제보 횟수. 넘으면 409 REPORT_LIMIT_EXCEEDED
+    report_photo_max_bytes: int = 10 * 1024 * 1024
+    report_photo_dir: str = "data/vehicle-reports"
+
 
 @lru_cache
 def get_settings() -> Settings:

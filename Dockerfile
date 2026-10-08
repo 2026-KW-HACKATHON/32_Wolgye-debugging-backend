@@ -11,7 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd --create-home --uid 1000 app
+# 미등록 차량 제보 사진 (#52, REPORT_PHOTO_DIR). 운영은 docker-compose.prod.yml 의 볼륨을 여기에 붙인다.
+# 볼륨이 처음 만들어질 때 이 폴더의 소유자(app)를 이어받는다
+RUN useradd --create-home --uid 1000 app \
+    && mkdir -p /app/data/vehicle-reports && chown -R app:app /app/data
 USER app
 
 EXPOSE 8000

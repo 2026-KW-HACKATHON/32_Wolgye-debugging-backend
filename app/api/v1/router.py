@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     parkings,
     share_requests,
     users,
+    vehicle_reports,
     vehicles,
 )
 
@@ -30,3 +31,4 @@ api_router.include_router(share_requests.router)  # 건우 #12
 api_router.include_router(admin_shares.router)  # 건우 #13
 api_router.include_router(admin.router)  # 건우 #14
 api_router.include_router(notifications.router)  # 건우 #11
+api_router.include_router(vehicle_reports.router)  # #52

@@ -7,11 +7,13 @@ from pydantic import BaseModel
 from app.models.notification import Notification, NotificationType
 from app.schemas.common import KstDatetime
 
-NotificationTypeName = Literal["BLOCK_ALERT", "MOVE_REQUEST", "EXIT_DONE", "SHARE_REQUEST", "SHARE_RESULT"]
+NotificationTypeName = Literal[
+    "BLOCK_ALERT", "MOVE_REQUEST", "EXIT_DONE", "SHARE_REQUEST", "SHARE_RESULT", "VEHICLE_REPORT"
+]  # fmt: skip
 
 
 class NotificationLink(BaseModel):
-    screen: Literal["MOVE_REQUEST", "SHARE_REQUEST", "HOME"]  # 명세 NotificationLink.screen (결정 11)
+    screen: Literal["MOVE_REQUEST", "SHARE_REQUEST", "HOME", "VEHICLE_REPORT"]  # 명세 NotificationLink.screen (결정 11, #52)
     id: int | None = None
 
 
@@ -44,6 +46,8 @@ def notification_link(n: Notification) -> NotificationLink | None:
             return NotificationLink(screen="MOVE_REQUEST", id=n.move_request_id)
         case NotificationType.SHARE_REQUEST | NotificationType.SHARE_RESULT:
             return NotificationLink(screen="SHARE_REQUEST", id=n.share_request_id)
+        case NotificationType.VEHICLE_REPORT:
+            return NotificationLink(screen="VEHICLE_REPORT", id=n.vehicle_report_id)
         case NotificationType.BLOCK_ALERT:
             return NotificationLink(screen="HOME", id=None)
         case _:

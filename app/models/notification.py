@@ -22,6 +22,7 @@ class NotificationType(enum.StrEnum):
     EXIT_DONE = "exit_done"          # 출차 완료 안내 ("건물 앞 2번 비어 있음")
     SHARE_REQUEST = "share_request"  # 공유 사용 요청 도착 (관리인용)
     SHARE_RESULT = "share_result"    # 공유 요청 수락/거절 결과
+    VEHICLE_REPORT = "vehicle_report"  # 미등록 차량 제보 도착 (관리인용, #52)
 
 
 class Notification(Base):
@@ -42,6 +43,9 @@ class Notification(Base):
     )
     move_request_id: Mapped[int | None] = mapped_column(
         ForeignKey("move_requests.id", ondelete="CASCADE"), nullable=True
+    )
+    vehicle_report_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vehicle_reports.id", ondelete="CASCADE"), nullable=True
     )
 
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
