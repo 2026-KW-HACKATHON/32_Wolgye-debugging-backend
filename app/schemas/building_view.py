@@ -46,6 +46,7 @@ class LayoutZone(BaseModel):
 class BuildingLayout(BaseModel):
     building_id: int
     name: str
+    site_key: str | None  # FE 배치도 사이트 파일 키 (public/sites/{site_key}.json). null 이면 칸 rect 로 그린다
     alley: AlleyRef
     zones: list[LayoutZone]
 

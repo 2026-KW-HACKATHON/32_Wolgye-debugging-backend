@@ -67,8 +67,9 @@ async def test_layout(client, villa):
     assert res.status_code == 200, res.text
     body = res.json()
 
-    assert set(body) == {"building_id", "name", "alley", "zones"}
+    assert set(body) == {"building_id", "name", "site_key", "alley", "zones"}
     assert (body["building_id"], body["name"]) == (villa["building"].id, "월계 한빛빌라")
+    assert body["site_key"] is None  # 사이트 파일이 없는 빌라 → FE 가 rect 로 그린다
     assert body["alley"] == {"id": villa["alley"].id, "name": "광운로19가길"}
     assert [(z["name"], z["zone_type"]) for z in body["zones"]] == [
         ("필로티 안쪽", "PILOTI_IN"),

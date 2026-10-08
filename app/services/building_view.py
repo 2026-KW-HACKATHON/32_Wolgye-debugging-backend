@@ -112,6 +112,7 @@ async def get_layout(db: AsyncSession, building_id: int) -> BuildingLayout:
     return BuildingLayout(
         building_id=building.id,
         name=building.name,
+        site_key=building.site_key,
         alley=AlleyRef.model_validate(alley),
         zones=[
             LayoutZone(

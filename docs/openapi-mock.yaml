@@ -1600,6 +1600,9 @@ components:
       properties:
         building_id: { type: integer }
         name: { type: string }
+        site_key:
+          type: [string, "null"]
+          description: "FE 배치도 사이트 파일 키 (public/sites/{site_key}.json, 예: hanbit). null 이면 FE 가 칸 rect 로 그린다"
         alley: { $ref: "#/components/schemas/AlleyRef" }
         zones:
           type: array
@@ -1935,6 +1938,9 @@ components:
         id: { type: integer, description: 차고지 id = 빌라 id }
         name: { type: string, description: 빌라 이름 }
         address: { type: string, description: 빌라 주소 }
+        site_key:
+          type: [string, "null"]
+          description: "FE 배치도 사이트 파일 키 (BuildingLayout.site_key 와 같다). 다른 빌라 사람도 받는다"
         alley: { $ref: "#/components/schemas/AlleyRef" }
         summary:
           type: object
