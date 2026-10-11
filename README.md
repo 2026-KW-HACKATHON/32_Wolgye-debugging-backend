@@ -1,8 +1,24 @@
 # 차곡차곡 — Backend
 
 빌라 골목 주차를 관리하는 앱 **차곡차곡**의 백엔드입니다. FastAPI와 PostgreSQL(PostGIS)로 만들었습니다.
-화면은 Manyfast 와이어프레임을 기준으로 합니다. 같은 와이어프레임이 Figma `월계디버깅` 파일에도 있습니다.
+2026 KW HACKATHON 32조 **월계디버깅** — 백엔드 담당 권건우(인증·공유·관리자·알림), 강현서(차량·주차·막힘·이동 요청).
+
+| 바로가기 | 링크 |
+| --- | --- |
+| 서비스 체험 | https://32wolgye-debugging-frontend.vercel.app |
+| API 명세 (Swagger) | https://2026-kw-hackathon.github.io/32_Wolgye-debugging-backend/ |
+| 프로젝트 소개 (메인 저장소) | [32_Wolgye-debugging](https://github.com/2026-KW-HACKATHON/32_Wolgye-debugging) |
+| 프론트엔드 | [32_Wolgye-debugging-frontend](https://github.com/2026-KW-HACKATHON/32_Wolgye-debugging-frontend) |
+
+화면의 기준은 Figma `월계디버깅` 와이어프레임이고, 요구사항은 Manyfast 프로젝트 "차곡차곡"을 따릅니다.
 DB 설계에서 남은 과제는 [`docs/db-design-issues.md`](docs/db-design-issues.md)를 참고하세요.
+
+## 핵심 규칙
+- **막힘**: 앞 칸(`front_slot_id`)의 차가 내 차보다 늦게 나가면 막힘입니다. 출차 시간이 없는 앞 칸 차(상시 주차·미확인 차량)는 늦게 나가는 것으로 봅니다. 판정은 `app/services/blocking.py` 한 곳에만 있습니다.
+- **배치 추천**: 막히지도 막지도 않는 빈 칸 중 **가장 안쪽 한 칸**을 `RECOMMENDED`로 표시합니다 (`app/services/recommendations.py`). 규칙 기반이며 AI를 쓰지 않습니다.
+- **전날 밤 막힘 알림**: 매일 22:00 KST에 `app/jobs/block_alert.py`가 내일 출차할 차를 막고 있는 차의 주인에게 `BLOCK_ALERT`를 만듭니다. 출차 시간을 앞당기면 막는 차 주인에게 바로 알립니다. 알림은 앱 안 알림이며 푸시 전송은 없습니다.
+- **미등록 차량 제보**: 사진으로 제보하면 미확인 차량으로 배치되고, 관리인에게 알림, 제보자에게 500 토큰(하루 3회)이 지급됩니다.
+- **토큰**: 결제는 원이 아니라 서비스 안 토큰입니다. 가입 시 500,000 토큰을 지급하고, 공유 요청이 수락되면 이용료가 자리 주인에게 넘어갑니다.
 
 ## 스택
 - Python 3.12, FastAPI, Pydantic v2
@@ -28,10 +44,11 @@ app/
 │   ├── base_class.py    # DeclarativeBase
 │   ├── base.py          # Alembic용: Base와 전체 모델 노출
 │   └── session.py       # async 엔진과 세션
+├── jobs/                # 따로 실행하는 작업: block_alert(전날 밤 막힘 알림), seed_demo(시연용 시드)
 ├── models/              # SQLAlchemy 모델. __init__.py에서 전체 모델을 등록
 ├── schemas/             # Pydantic 요청·응답 스키마
 └── services/            # 비즈니스 규칙·트랜잭션(commit). HTTP를 모르고 실패는 services/exceptions.py 예외로 알림
-alembic/                 # 마이그레이션 (versions/0001~0003)
+alembic/                 # 마이그레이션 (versions/0001~0006)
 docs/                    # 설계 문서
 tests/
 ```
@@ -52,7 +69,8 @@ tests/
 | `departure_schedules` | 출차 예정(날짜·시간, 반복 요일, AI 추정 여부, 메모) | n15, n18, n20 |
 | `share_requests` | 공유 조건(`offer_id`)에 대한 정시 단위 이용 요청(`request_date`, `start_hour`~`end_hour`)과 수락/거절. 요청할 때 가격(`total_price`, 토큰)을 고정 | n34, n41, n47 |
 | `move_requests` | 이동 요청. 받는 사람은 `target_vehicle.owner_id` | n29, n41 |
-| `notifications` | 전날 밤 출차 알림, 공유·이동 요청 알림. 원인이 된 요청을 FK로 연결 | 알림 |
+| `notifications` | 막힘 알림(전날 밤 사전 알림 포함), 이동 요청, 출차 완료, 공유 요청·결과, 미등록 차량 제보 알림. 원인이 된 요청을 FK로 연결 | 알림 |
+| `vehicle_reports` | 미등록 차량 사진 제보. 사진은 파일로 두고 `photo_key`만 저장. 제보 한 번에 미확인 차량 배치·관리인 알림·제보 보상이 함께 생김 | 제보 |
 
 **DB가 직접 막는 규칙** (마이그레이션 `0002`)
 - 한 칸에는 주차 중인 차가 한 대, 한 차는 한 칸에만 있음 (부분 UNIQUE 인덱스)
@@ -68,7 +86,7 @@ tests/
 
 **참고**
 - enum 컬럼에는 값이 아니라 **이름**이 저장됩니다. 예: `share_request_status`에는 `'PENDING'`이 들어가며, 이는 SQLAlchemy 기본 동작입니다.
-- 차량번호와 전화번호는 기획 결정에 따라 비노출 대상이 아닙니다.
+- 차량번호와 전화번호는 기획 결정에 따라 DB에 그대로 저장합니다. 전화번호는 다른 사용자에게 내려주지 않고, 본인 프로필(`GET /users/me`)에서도 `010-****-5678`로 가립니다.
 - `buildings.location`은 SRID 4326(위경도)이고 지도 검색에 씁니다. 2.5D 배치도는 칸의 로컬 좌표(`render_*`, 건물 기준 미터)로 그립니다.
 
 ## 실행
@@ -116,6 +134,9 @@ python -m app.jobs.seed_demo
 | `0001` | PostGIS 확장 활성화 |
 | `0002` | 도메인 스키마 전체 생성과 `btree_gist` 확장 |
 | `0003` | 골목(`alleys`) 추가, 구역 → 차고지(`garages`), 공유 조건(`share_offers`), 정시 단위 공유 요청, 토큰(`token_balance`, `token_transfers`). 기존 공유 요청은 새 구조로 옮길 수 없어 삭제 |
+| `0004` | 알림 종류를 Figma 기준으로 정리 (`DEPARTURE_REMINDER` → `BLOCK_ALERT`, `EXIT_DONE` 추가 등) |
+| `0005` | `buildings.site_key` — FE 배치도 파일(`public/sites/{site_key}.json`)을 찾는 키 (#47) |
+| `0006` | 미등록 차량 제보(`vehicle_reports`), 알림 종류 `VEHICLE_REPORT` (#52) |
 
 모델을 바꾼 뒤에는 아래 순서로 진행합니다.
 ```bash
@@ -162,8 +183,6 @@ alembic check        # 모델과 마이그레이션이 일치하면 "No new upgr
 - 계층은 **골목 > 빌라(차고지) > 주차 구역 > 칸** (주차 구역의 DB 테이블 이름은 `garages`, 막힘은 `front_slot_id`)
 - **한 사용자는 한 빌라에만 소속** (`residents.building_id`)
 
-> ⚠️ 현재 서버 구현(`/alleys`, `/share-offers` 등, 인증 없음)과는 경로·응답 모양이 다릅니다. 이전의 "현재 구현 기준" 명세는 git 이력(PR #1)에 있습니다.
-
 - 명세 파일: [`docs/openapi-mock.yaml`](docs/openapi-mock.yaml) (OpenAPI 3.1, 화면 번호 #1~#23은 Notion 매핑표와 같음)
 - 보기 페이지: [`docs/swagger-mock.html`](docs/swagger-mock.html) (Swagger UI를 CDN에서 불러오므로 인터넷 연결 필요)
 
@@ -183,7 +202,7 @@ npx http-server -p 8080
 주의할 점
 - Swagger UI의 **Try it out**은 Mock이 아니라 `http://localhost:8000/api/v1`(실제 서버)로 요청을 보냅니다. 서버를 띄우지 않았다면 실패하는 게 정상입니다.
 - 엔드포인트나 스키마를 바꾸면 `docs/openapi-mock.yaml`도 같이 고쳐 주세요. FastAPI가 자동 생성하는 명세는 서버 실행 후 http://localhost:8000/docs 에서 볼 수 있습니다.
-- 이 명세의 enum은 **대문자 값**(`PENDING`, `APPROVED`), 요일은 `MON`~`SUN`, 금액은 토큰입니다. 현재 구현은 소문자 enum·정수 요일이라 서로 맞추는 작업이 필요합니다.
+- 이 명세의 enum은 **대문자 값**(`PENDING`, `APPROVED`), 요일은 `MON`~`SUN`, 금액은 토큰입니다. DB는 정수 요일(0=월)과 일부 다른 이름(`ADMIN`↔`MANAGER`, `APPROVED`↔`ACCEPTED` 등)을 쓰고, 스키마(Pydantic)에서 명세 값으로 바꿔 응답합니다.
 - 명세 맨 위 "열린 질문" 표에 팀 합의가 필요한 항목(홈 요약 칩 정의, 칸 이름 규칙 등)을 정리해 두었습니다.
 
 ## 개발 규칙
