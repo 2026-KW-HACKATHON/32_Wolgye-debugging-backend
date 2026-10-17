@@ -58,6 +58,34 @@ async def accepted_share_at(db: AsyncSession, slot_id: int, at: datetime) -> Sha
     return (await accepted_shares_at(db, [slot_id], at)).get(slot_id)
 
 
+@dataclass(frozen=True)
+class ActiveShare:
+    """지금 진행 중인 수락된 공유와 그 요청자·차량. 차량을 고르지 않은 요청이면 vehicle 은 None."""
+
+    share: ShareRequest
+    requester: Resident
+    vehicle: Vehicle | None
+
+
+async def active_shares_at(db: AsyncSession, slot_ids: Iterable[int], at: datetime) -> dict[int, ActiveShare]:
+    """accepted_shares_at 에 요청자·차량을 붙인 것 (slot_id → ActiveShare). 관리자 실시간·배치도 예약 표시용 (#53)."""
+    shares = await accepted_shares_at(db, slot_ids, at)
+    if not shares:
+        return {}
+    requester_ids = {share.requester_id for share in shares.values()}
+    vehicle_ids = {share.vehicle_id for share in shares.values() if share.vehicle_id is not None}
+    requesters = {r.id: r for r in (await db.scalars(select(Resident).where(Resident.id.in_(requester_ids)))).all()}
+    vehicles = (
+        {v.id: v for v in (await db.scalars(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))).all()}
+        if vehicle_ids
+        else {}
+    )
+    return {
+        slot_id: ActiveShare(share, requesters[share.requester_id], vehicles.get(share.vehicle_id))
+        for slot_id, share in shares.items()
+    }
+
+
 # ── 새 API (명세 /share-requests, /me/share-requests) ─────────────────────────────
 
 

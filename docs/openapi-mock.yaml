@@ -326,6 +326,7 @@ paths:
       description: |
         칸마다 상태·주차 정보·막힘 관계를 내려줍니다. 막힘 규칙: **앞 칸(`front_slot_id`)의 차가 이 칸 차보다 늦게 나가면 이 칸 차는 막힘**. 앞 칸 차의 출차 시간이 없으면(상시 주차·미확인 차량) 늦게 나가는 것으로 보고, 이 칸 차가 상시 주차면 막힘으로 보지 않습니다. 외부 차량의 출차 시간은 수락된 공유의 종료 시각입니다.
         입주민의 출차 시간 원본은 같은 빌라 입주민에게만 보이고, 공유 탐색(#13)에는 `estimated_free_at` 만 노출됩니다.
+        **공유 예약 (backend #53)**: 지금 이용 시간인 수락된 공유가 있지만 아직 주차 기록이 없는 칸은 `state` 는 그대로(`EMPTY`)이고 `reservation` 이 채워집니다. 공유 이용자가 실제로 주차하면 `parking` 으로 보이고 `reservation` 은 `null` 입니다. 예약된 칸에 다른 입주민이 `POST /parkings` 하면 409 `SLOT_UNAVAILABLE` (`detail.reason: "예약된 상태"`)입니다.
       operationId: getBuildingStatus
       x-priority: 1주차
       parameters:
@@ -1032,6 +1033,8 @@ paths:
         - `congestion.days[].peak_occupied` 는 하루 중 가장 붐빈 시간의 점유 칸 수입니다 (총 8칸)
         - `ai_insight` 는 향후 기능이라 지금은 항상 `null` 입니다 (FE 는 "AI 분석 (향후)" 카드를 고정 표시)
         - 요청자 이름은 `박○○` 처럼 마스킹됩니다
+        - `realtime.vehicles` 는 외부·미확인 차량입니다 (backend #53). `parked: true` 는 주차 중(배치도 `parking` 과 같음), `parked: false` 는 지금 이용 시간인 수락된 공유만 있고 아직 주차하지 않은 예약(배치도 `reservation` 과 같음)입니다. `share` 는 그 칸·차량의 진행 중인 공유 시간(주차한 공유 이용자도 채움), 없으면 `null` 입니다. 예약은 옮길 차가 없어 `can_request_move: false` 입니다
+        - 아직 시작하지 않은 오늘 예약은 보이지 않습니다. `available_count` 는 주차 중인 칸과 예약된 칸을 빼고 셉니다
       operationId: getAdminDashboard
       x-priority: 2주차
       parameters:
@@ -1785,6 +1788,14 @@ components:
             occupant_type: { $ref: "#/components/schemas/OccupantType" }
             expected_exit_at: { type: [string, "null"], format: date-time }
             exit_source: { $ref: "#/components/schemas/ExitSource" }
+        reservation:
+          type: [object, "null"]
+          description: 지금 이용 시간인 수락된 공유가 있고 주차 기록이 없을 때만. state 는 그대로 EMPTY (backend #53)
+          properties:
+            plate: { type: [string, "null"], description: 요청자가 차량을 고르지 않았으면 null }
+            occupant_type: { $ref: "#/components/schemas/OccupantType" }
+            start_hour: { $ref: "#/components/schemas/Hour" }
+            end_hour: { $ref: "#/components/schemas/Hour" }
         blocked_by: { type: array, items: { type: integer }, description: 이 칸의 차를 막고 있는 칸 }
         blocking: { type: array, items: { type: integer }, description: 이 칸의 차가 막고 있는 칸 }
     BuildingStatus:
@@ -1797,14 +1808,14 @@ components:
       example:
         updated_at: "2026-09-30T14:40:00+09:00"
         slots:
-          - { slot_id: 1001, state: OCCUPIED, parking: { id: 556, is_mine: true, plate: 12가 3456, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL }, blocked_by: [1002], blocking: [] }
-          - { slot_id: 1002, state: OCCUPIED, parking: { id: 555, is_mine: false, plate: 34나 5678, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T21:00:00+09:00", exit_source: MANUAL }, blocked_by: [], blocking: [1001] }
-          - { slot_id: 1003, state: OCCUPIED, parking: { id: 558, is_mine: false, plate: 123가 4634, occupant_type: EXTERNAL, expected_exit_at: "2026-09-30T17:00:00+09:00", exit_source: NONE }, blocked_by: [], blocking: [] }
-          - { slot_id: 1004, state: SOON_EXIT, parking: { id: 557, is_mine: false, plate: 27가 4821, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T15:10:00+09:00", exit_source: RECURRING }, blocked_by: [], blocking: [] }
-          - { slot_id: 1005, state: UNAVAILABLE, parking: null, blocked_by: [], blocking: [] }
-          - { slot_id: 1006, state: OCCUPIED, parking: { id: 559, is_mine: false, plate: 45다 6789, occupant_type: UNKNOWN, expected_exit_at: null, exit_source: NONE }, blocked_by: [], blocking: [] }
-          - { slot_id: 1007, state: EMPTY, parking: null, blocked_by: [], blocking: [] }
-          - { slot_id: 1008, state: EMPTY, parking: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1001, state: OCCUPIED, parking: { id: 556, is_mine: true, plate: 12가 3456, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T18:30:00+09:00", exit_source: MANUAL }, reservation: null, blocked_by: [1002], blocking: [] }
+          - { slot_id: 1002, state: OCCUPIED, parking: { id: 555, is_mine: false, plate: 34나 5678, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T21:00:00+09:00", exit_source: MANUAL }, reservation: null, blocked_by: [], blocking: [1001] }
+          - { slot_id: 1003, state: OCCUPIED, parking: { id: 558, is_mine: false, plate: 123가 4634, occupant_type: EXTERNAL, expected_exit_at: "2026-09-30T17:00:00+09:00", exit_source: NONE }, reservation: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1004, state: SOON_EXIT, parking: { id: 557, is_mine: false, plate: 27가 4821, occupant_type: RESIDENT, expected_exit_at: "2026-09-30T15:10:00+09:00", exit_source: RECURRING }, reservation: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1005, state: UNAVAILABLE, parking: null, reservation: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1006, state: OCCUPIED, parking: { id: 559, is_mine: false, plate: 45다 6789, occupant_type: UNKNOWN, expected_exit_at: null, exit_source: NONE }, reservation: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1007, state: EMPTY, parking: null, reservation: null, blocked_by: [], blocking: [] }
+          - { slot_id: 1008, state: EMPTY, parking: null, reservation: { plate: 56다 1234, occupant_type: EXTERNAL, start_hour: 14, end_hour: 16 }, blocked_by: [], blocking: [] }
     Home:
       type: object
       properties:
@@ -2158,9 +2169,16 @@ components:
                 properties:
                   slot_id: { type: integer }
                   slot_label: { type: string }
-                  plate: { type: string }
+                  plate: { type: [string, "null"], description: 차량을 고르지 않은 공유 예약(parked=false)이면 null }
                   occupant_type: { $ref: "#/components/schemas/OccupantType" }
-                  can_request_move: { type: boolean }
+                  can_request_move: { type: boolean, description: 주차 중이고 미확인 차량이 아닐 때만 true }
+                  parked: { type: boolean, description: "true = 주차 중, false = 공유 예약만 있고 아직 주차 안 함 (backend #53)" }
+                  share:
+                    type: [object, "null"]
+                    description: 이 칸·차량의 지금 이용 중인 수락된 공유. 없으면 null
+                    properties:
+                      start_hour: { $ref: "#/components/schemas/Hour" }
+                      end_hour: { $ref: "#/components/schemas/Hour" }
         congestion:
           type: object
           properties:
@@ -2180,10 +2198,11 @@ components:
           - { id: 303, requester: { name: 박○○, temperature: 38.5 }, slot_label: P7, request_date: "2026-10-03", start_hour: 7, end_hour: 11, total_price: 8, created_at: "2026-09-30T14:39:00+09:00" }
           - { id: 301, requester: { name: 홍○○, temperature: 36.5 }, slot_label: P7, request_date: "2026-10-02", start_hour: 13, end_hour: 17, total_price: 8, created_at: "2026-09-30T14:10:00+09:00" }
         realtime:
-          available_count: 3
+          available_count: 1
           vehicles:
-            - { slot_id: 1003, slot_label: P3, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true }
-            - { slot_id: 1006, slot_label: P6, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false }
+            - { slot_id: 1003, slot_label: P3, plate: 123가 4634, occupant_type: EXTERNAL, can_request_move: true, parked: true, share: { start_hour: 13, end_hour: 17 } }
+            - { slot_id: 1006, slot_label: P6, plate: 45다 6789, occupant_type: UNKNOWN, can_request_move: false, parked: true, share: null }
+            - { slot_id: 1008, slot_label: P8, plate: 56다 1234, occupant_type: EXTERNAL, can_request_move: false, parked: false, share: { start_hour: 14, end_hour: 16 } }
         congestion:
           month: "2026-09"
           total_slots: 8

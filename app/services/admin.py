@@ -34,9 +34,11 @@ from app.schemas.admin import (
     PendingRequestItem,
     Realtime,
     RealtimeVehicle,
+    ShareHours,
     UnknownVehicleCreate,
     UnknownVehicleCreated,
 )
+from app.services import share_requests
 from app.services.exceptions import ConflictError, InvalidInputError, NotFoundError
 from app.services.permissions import ensure_building_admin
 from app.services.slot_labels import building_slot_labels, slot_labels
@@ -163,56 +165,54 @@ async def _pending_requests(db: AsyncSession, building_id: int) -> list[PendingR
 
 
 async def _realtime(db: AsyncSession, building_id: int, now: datetime) -> Realtime:
-    """주차 중인 차(활성 배치) + 지금 이용 시간인 수락된 공유(그 칸에 배치가 없을 때) 중 외부·미확인 차량."""
+    """외부·미확인 차량: 주차 중인 차(활성 배치, parked=true) + 지금 이용 시간인 수락된 공유 중
+    그 칸에 배치가 없는 것(공유 예약, parked=false). 배치도(GET /buildings/{id}/status)의 parking·reservation 과 같다 (#53).
+    """
     labels = await building_slot_labels(db, building_id)  # 칸 순번 순서
     slots = {
         slot.id: slot for slot in (await db.scalars(select(ParkingSlot).where(ParkingSlot.id.in_(labels)))).all()
     }
     order = {slot_id: i for i, slot_id in enumerate(labels)}
 
-    # (slot_id → (vehicle, owner))
-    occupants: dict[int, tuple[Vehicle, Resident | None]] = {}
     assigned = await db.execute(
         select(ParkingAssignment.slot_id, Vehicle, Resident)
         .join(Vehicle, Vehicle.id == ParkingAssignment.vehicle_id)
         .outerjoin(Resident, Resident.id == Vehicle.owner_id)
         .where(ParkingAssignment.is_active, ParkingAssignment.slot_id.in_(labels.keys()))
     )
-    for slot_id, vehicle, owner in assigned.all():
-        occupants[slot_id] = (vehicle, owner)
-
-    local = now.astimezone(KST)
-    shared = await db.execute(
-        select(ShareRequest.slot_id, Vehicle, Resident)
-        .join(Vehicle, Vehicle.id == ShareRequest.vehicle_id)
-        .outerjoin(Resident, Resident.id == Vehicle.owner_id)
-        .where(
-            ShareRequest.status == ShareRequestStatus.ACCEPTED,
-            ShareRequest.slot_id.in_(labels.keys()),
-            ShareRequest.request_date == local.date(),
-            ShareRequest.start_hour <= local.hour,
-            ShareRequest.end_hour > local.hour,
-        )
-    )
-    for slot_id, vehicle, owner in shared.all():
-        occupants.setdefault(slot_id, (vehicle, owner))
+    parked: dict[int, tuple[Vehicle, Resident | None]] = {slot_id: (v, owner) for slot_id, v, owner in assigned.all()}
+    shares = await share_requests.active_shares_at(db, labels.keys(), now)
 
     vehicles = []
-    for slot_id in sorted(occupants, key=order.__getitem__):
-        vehicle, owner = occupants[slot_id]
-        kind = occupant_type(owner, building_id)
+    for slot_id in sorted(parked.keys() | shares.keys(), key=order.__getitem__):
+        active = shares.get(slot_id)
+        if slot_id in parked:
+            vehicle, owner = parked[slot_id]
+            kind = occupant_type(owner, building_id)
+            # 공유 이용자 본인이 그 칸에 세웠을 때만 공유 시간을 붙인다
+            share = active.share if active and owner is not None and active.requester.id == owner.id else None
+            plate: str | None = format_plate(vehicle.plate_no)
+        else:
+            kind = occupant_type(active.requester, building_id)
+            share = active.share
+            plate = format_plate(active.vehicle.plate_no) if active.vehicle else None
         if kind == OccupantType.RESIDENT:  # 관리 구역 실시간은 외부·미확인 차량만 (입주민 차는 빈 칸 계산에만 반영)
             continue
+        is_parked = slot_id in parked
         vehicles.append(
             RealtimeVehicle(
                 slot_id=slot_id,
                 slot_label=labels[slot_id],
-                plate=format_plate(vehicle.plate_no),
+                plate=plate,
                 occupant_type=kind,
-                can_request_move=kind != OccupantType.UNKNOWN,  # 미확인 차량은 앱으로 연락 불가
+                # 미확인 차량은 앱으로 연락 불가, 아직 주차하지 않은 예약은 옮길 차가 없다
+                can_request_move=is_parked and kind != OccupantType.UNKNOWN,
+                parked=is_parked,
+                share=ShareHours(start_hour=share.start_hour, end_hour=share.end_hour) if share else None,
             )
         )
-    available = sum(1 for slot in slots.values() if slot.is_active and slot.id not in occupants)
+    # 예약된 칸(공유 예약만 있고 비어 있음)도 빈 칸에서 뺀다
+    available = sum(1 for slot in slots.values() if slot.is_active and slot.id not in parked and slot.id not in shares)
     return Realtime(available_count=available, vehicles=vehicles)
 
 

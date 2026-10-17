@@ -167,7 +167,15 @@ async def test_create_unknown_vehicle(client, db, setup):
     dash = await client.get(f"/api/v1/admin/buildings/{b.id}/dashboard", headers=auth_headers(setup["admin"]))
     vehicles = dash.json()["realtime"]["vehicles"]
     assert vehicles == [
-        {"slot_id": s1.id, "slot_label": "P1", "plate": "45다 6789", "occupant_type": "UNKNOWN", "can_request_move": False}
+        {
+            "slot_id": s1.id,
+            "slot_label": "P1",
+            "plate": "45다 6789",
+            "occupant_type": "UNKNOWN",
+            "can_request_move": False,
+            "parked": True,
+            "share": None,
+        }
     ]
 
 

@@ -137,6 +137,12 @@ async def test_dashboard_congestion_realtime_and_pending(db):
     assert vehicles[s2.id].plate == "45다 6789"
     assert vehicles[s3.id].occupant_type == OccupantType.EXTERNAL
     assert vehicles[s3.id].slot_label == "P3"
+    # 주차 중인 미확인 차(s2) vs 공유 예약만 있고 아직 주차 안 한 외부 차(s3) (#53)
+    assert (vehicles[s2.id].parked, vehicles[s2.id].share) == (True, None)
+    assert vehicles[s3.id].parked is False
+    assert (vehicles[s3.id].share.start_hour, vehicles[s3.id].share.end_hour) == (13, 17)
+    assert vehicles[s3.id].can_request_move is False  # 옮길 차가 아직 없다
+    assert vehicles[s3.id].plate == "123가 4634"
     assert dash.realtime.available_count == 1  # s4
 
     peaks = {d.date: d.peak_occupied for d in dash.congestion.days}

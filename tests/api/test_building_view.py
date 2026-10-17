@@ -6,8 +6,16 @@ import pytest
 
 from app.core.error_codes import ErrorCode
 from app.models.resident import ResidentRole
+from app.models.share_request import ShareRequestStatus
 from app.schemas.common import KST
-from tests.factories import make_alley, make_building, make_resident, make_vehicle
+from tests.factories import (
+    make_alley,
+    make_building,
+    make_resident,
+    make_share_offer,
+    make_share_request,
+    make_vehicle,
+)
 from tests.factories_parking import make_assignment, make_departure, make_spec_building
 from tests.helpers import assert_error, auth_headers
 
@@ -112,15 +120,63 @@ async def test_status(client, villa):
             "expected_exit_at": villa["my_exit"].isoformat(),
             "exit_source": "MANUAL",
         },
+        "reservation": None,
         "blocked_by": [villa["P2"].id],
         "blocking": [],
     }
     assert (slots[1]["parking"]["is_mine"], slots[1]["blocking"]) == (False, [villa["P1"].id])
-    assert slots[2] == {"slot_id": villa["P3"].id, "state": "EMPTY", "parking": None, "blocked_by": [], "blocking": []}
+    assert slots[2] == {
+        "slot_id": villa["P3"].id,
+        "state": "EMPTY",
+        "parking": None,
+        "reservation": None,
+        "blocked_by": [],
+        "blocking": [],
+    }
 
     # 같은 빌라의 다른 입주민에게는 is_mine 이 반대
     neighbor = await client.get(_url(villa, "status"), headers=auth_headers(villa["neighbor"]))
     assert [s["parking"]["is_mine"] for s in neighbor.json()["slots"][:2]] == [False, True]
+
+
+async def test_status_reservation_and_dashboard_share(client, db, villa):
+    """지금 이용 시간인 수락된 공유만 있고 아직 주차 안 한 칸: 배치도는 EMPTY + reservation,
+    관리자 실시간은 parked=false + share (#53)."""
+    now = datetime.now(KST)
+    offer = await make_share_offer(db, villa["P7"], villa["manager"])
+    share = await make_share_request(
+        db, offer, villa["outsider"], ShareRequestStatus.ACCEPTED, start_hour=now.hour, end_hour=now.hour + 1
+    )
+    share.request_date = now.date()
+    share.vehicle_id = (await make_vehicle(db, "56다1234", owner=villa["outsider"])).id
+    await db.commit()
+
+    res = await client.get(_url(villa, "status"), headers=auth_headers(villa["me"]))
+    assert res.status_code == 200, res.text
+    p7 = res.json()["slots"][6]
+    assert (p7["slot_id"], p7["state"], p7["parking"]) == (villa["P7"].id, "EMPTY", None)
+    assert p7["reservation"] == {
+        "plate": "56다 1234",
+        "occupant_type": "EXTERNAL",
+        "start_hour": now.hour,
+        "end_hour": now.hour + 1,
+    }
+
+    dash = await client.get(
+        f"{API}/admin/buildings/{villa['building'].id}/dashboard", headers=auth_headers(villa["manager"])
+    )
+    assert dash.status_code == 200, dash.text
+    assert dash.json()["realtime"]["vehicles"] == [
+        {
+            "slot_id": villa["P7"].id,
+            "slot_label": "P7",
+            "plate": "56다 1234",
+            "occupant_type": "EXTERNAL",
+            "can_request_move": False,
+            "parked": False,
+            "share": {"start_hour": now.hour, "end_hour": now.hour + 1},
+        }
+    ]
 
 
 # ── 배치 추천 ──
